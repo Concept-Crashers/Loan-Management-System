@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Bell, Building2, ChevronDown, CircleHelp, Command, CreditCard, LayoutDashboard, Menu, Moon, PanelLeftClose, Plus, Search, ShieldCheck, Sun, Users, Wallet, X } from 'lucide-react'
@@ -26,11 +26,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const theme = useSelector((state: RootState) => state.session.theme)
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     window.localStorage.setItem('lendflow-theme', theme)
   }, [theme])
+  useEffect(() => {
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+        requestAnimationFrame(() => searchInputRef.current?.focus())
+      }
+    }
+    window.addEventListener('keydown', handleSearchShortcut)
+    return () => window.removeEventListener('keydown', handleSearchShortcut)
+  }, [])
   const results = useMemo(() => {
     if (query.trim().length < 2) return []
     const q = query.toLowerCase()
@@ -47,13 +60,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
       <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><div className="brand-copy"><strong>LendFlow</strong><small>LOAN OPERATIONS</small></div><button className="mobile-close" onClick={() => dispatch(closeSidebar())} aria-label="Close menu"><X size={18} /></button></div>
       <div className="branch-switcher"><span className="branch-avatar"><Building2 size={15} /></span><span><strong>Kampala Central</strong><small>Primary branch</small></span><ChevronDown size={14} className="branch-chevron" /></div>
-      <nav className="sidebar-nav" aria-label="Main navigation">{groups.map((group) => <div className="nav-group" key={group.label}><p className="nav-group-label">{group.label}</p>{group.items.map(({ label, to, icon: Icon, badge }) => <NavLink key={to} to={to} end={to === '/'} onClick={() => dispatch(closeSidebar())} className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <span className="nav-badge">{badge}</span>}</NavLink>)}</div>)}</nav>
+      <nav className="sidebar-nav" aria-label="Main navigation">{groups.map((group) => <div className="nav-group" key={group.label}><button className="nav-group-label nav-group-toggle" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))} aria-expanded={!collapsedGroups[group.label]}>{group.label}<ChevronDown size={11} /></button>{!collapsedGroups[group.label] && group.items.map(({ label, to, icon: Icon, badge }) => <NavLink key={to} to={to} end={to === '/'} onClick={() => dispatch(closeSidebar())} className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <span className="nav-badge">{badge}</span>}</NavLink>)}</div>)}</nav>
       <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17} /></span><strong>Need a hand?</strong><p>Explore the getting started guide.</p><button onClick={() => toast.info('Help centre will connect in a future release.')}>Open help centre <span>→</span></button></div><div className="sidebar-version"><span className="online-dot" /> Demo workspace <span className="version-pill">MVP</span></div></div>
     </aside>
     {sidebarOpen && <button className="sidebar-scrim" onClick={() => dispatch(closeSidebar())} aria-label="Close navigation" />}
     <div className="main-column">
       <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={() => dispatch(toggleSidebar())} aria-label="Open menu"><Menu size={20} /></button>{location.pathname !== '/' && <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{current?.label ?? 'Overview'}</strong></div>}</div>
-        <div className="topbar-right"><div className="global-search-wrap"><Search size={16} className="search-icon" /><input value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true) }} onFocus={() => setSearchOpen(true)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); if (event.key === 'Enter' && results[0]) selectResult(results[0].path) }} placeholder="Search anything..." aria-label="Search customers and loans" /><kbd>⌘ K</kbd>{searchOpen && query.length >= 2 && <div className="search-results">{results.length ? results.map((result) => <button key={result.path} onMouseDown={() => selectResult(result.path)}><span className="search-result-icon"><Search size={15} /></span><span><strong>{result.title}</strong><small>{result.meta}</small></span><span className="search-enter">↵</span></button>) : <p>No matching records found.</p>}</div>}</div>
+        <div className="topbar-right"><div className="global-search-wrap"><Search size={16} className="search-icon" /><input ref={searchInputRef} value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true) }} onFocus={() => setSearchOpen(true)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); if (event.key === 'Enter' && results[0]) selectResult(results[0].path) }} placeholder="Search anything..." aria-label="Search customers and loans" /><kbd>⌘ K</kbd>{searchOpen && query.length >= 2 && <div className="search-results">{results.length ? results.map((result) => <button key={result.path} onMouseDown={() => selectResult(result.path)}><span className="search-result-icon"><Search size={15} /></span><span><strong>{result.title}</strong><small>{result.meta}</small></span><span className="search-enter">↵</span></button>) : <p>No matching records found.</p>}</div>}</div>
           <button className="topbar-icon-button" onClick={() => dispatch(toggleTheme())} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button><button className="topbar-icon-button" onClick={() => toast('You’re all caught up', { description: 'New notifications will appear here.' })} aria-label="Notifications"><Bell size={18} /><span className="notification-dot" /></button><span className="topbar-divider" />
           <DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="profile-trigger"><Avatar name="Sarah Kiconco" size="sm" /><span className="profile-meta"><strong>Sarah Kiconco</strong><small>{role}</small></span><ChevronDown size={14} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" align="end" sideOffset={8}><div className="dropdown-label">DEMO ROLE</div>{['Manager', 'Loan Officer', 'Approver', 'Cashier', 'Collections Officer'].map((item) => <DropdownMenu.Item key={item} className="dropdown-item" onSelect={() => { dispatch(setRole(item)); toast.success(`Demo role switched to ${item}`) }}>{item}{role === item && <span>✓</span>}</DropdownMenu.Item>)}<DropdownMenu.Separator className="dropdown-separator" /><DropdownMenu.Item className="dropdown-item" onSelect={() => navigate('/settings')}>Profile & settings</DropdownMenu.Item><DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => navigate('/login')}>Sign out</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
         </div>
