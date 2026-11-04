@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, List, Search, SlidersHorizontal } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, List, Search, SlidersHorizontal, TrendingUp, WalletCards } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import Swal from 'sweetalert2'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { toast } from 'sonner'
 import { useSelector } from 'react-redux'
@@ -9,7 +8,7 @@ import { applications, collections } from '../data/mock-data'
 import { formatDate, formatUGX } from '../lib/format'
 import type { TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
-import { Avatar, Button, Card, Input, Select, StatusBadge } from './ui/primitives'
+import { Avatar, Button, Card, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
 
@@ -60,6 +59,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [filter, setFilter] = useState('All')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<TableRow | null>(null)
+  const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
+  const [decisionNotes, setDecisionNotes] = useState('')
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(2026, 10, 1))
@@ -86,6 +87,13 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const pageSize = 7
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
   const pageRows = filteredRows.slice((page - 1) * pageSize, page * pageSize)
+  const pageStats = definition.stats?.length === 3 ? [...definition.stats, { label: 'Records in view', value: String(allRows.length), helper: 'Current demo dataset' }] : definition.stats
+  const kpiIcons = [WalletCards, TrendingUp, Activity, ArrowUpRight]
+  const kpiColors = ['blue', 'green', 'violet', 'amber']
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
 
   function openRow(row: TableRow) {
     const key = definition.detailKey ? row[definition.detailKey] : undefined
@@ -94,20 +102,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     else setSelected(row)
   }
 
-  async function decide(row: TableRow, decision: 'approve' | 'reject') {
+  function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
     if (!canReview) { toast.error('This demo role cannot decide applications.', { description: 'Only an authorized approver role can submit a decision to the backend.' }); return }
-    const result = await Swal.fire({
-      title: `${decision === 'approve' ? 'Approve' : 'Reject'} this application?`,
-      text: 'This is a local demo action. A connected backend must validate and record all application decisions.',
-      input: 'textarea', inputLabel: 'Decision notes', inputPlaceholder: 'Add a clear, reviewable note…',
-      icon: decision === 'approve' ? 'question' : 'warning', showCancelButton: true,
-      confirmButtonText: `Confirm ${decision}`, confirmButtonColor: decision === 'approve' ? '#2563eb' : '#c14949', cancelButtonText: 'Go back',
-    })
-    if (!result.isConfirmed) return
+    setDecisionNotes('')
+    setDecisionRequest({ row, decision })
+  }
+
+  function confirmDecision() {
+    if (!decisionRequest) return
+    const { row, decision } = decisionRequest
     const application = applications.find((item) => item.id === row.id)
     if (application) application.status = decision === 'approve' ? 'Approved' : 'Rejected'
-    toast.success(`Demo decision ${decision === 'approve' ? 'approved' : 'rejected'}`, { description: `Decision details on ${String(row.id)} are only held in local sample data.` })
+    toast.success(`Demo decision ${decision === 'approve' ? 'approved' : 'rejected'}`, { description: decisionNotes.trim() ? 'The note is held in local sample data.' : `Decision details on ${String(row.id)} are only held in local sample data.` })
     setFilter('All')
+    setDecisionRequest(null)
   }
 
   function saveFollowup() {
@@ -128,17 +136,18 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
 
   return <div className="operational-page">
     <div className="page-heading"><div><div className="eyebrow">LENDING OPERATIONS <span className="eyebrow-separator">/</span> RECORDS</div><h1>{definition.title}</h1><p>{definition.subtitle}</p></div><div className="heading-actions">{headingAction}</div></div>
-    {definition.stats && <div className="module-stats-grid">{definition.stats.map((stat) => <Card className="module-stat" key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong><small>{stat.helper}</small></Card>)}</div>}
+    {pageStats && <div className="module-stats-grid">{pageStats.map((stat, index) => { const Icon = kpiIcons[index % kpiIcons.length]; return <Card className="module-stat metric-card" key={stat.label}><div className="metric-top"><span className={`metric-icon ${kpiColors[index % kpiColors.length]}`}><Icon size={17} strokeWidth={1.9} /></span><span className="metric-change"><ArrowUpRight size={12} /> Demo</span></div><span className="metric-label">{stat.label}</span><strong>{stat.value}</strong><small>{stat.helper}</small></Card> })}</div>}
     {path === '/approvals' && <div className="info-callout"><span className="callout-icon">i</span><span>Application decisions should be recorded by an authorized approver. This prototype shows the workflow only; the backend must validate permissions and preserve the audit trail.</span><Link to="/staff">Manage roles</Link></div>}
     {path === '/collections' && <div className="info-callout collection-callout"><span className="callout-icon">i</span><span>Keep all customer communication respectful, lawful and transparent. Record only necessary follow-up details.</span><button onClick={() => toast.info('Complaint handling guidance is planned for the operational handbook.')}>View guidance</button></div>}
     <Card className="data-table-card"><div className="table-card-top"><div><h2>{path === '/customers' ? 'All customers' : path === '/approvals' ? 'Review queue' : path === '/loans' ? 'Loan accounts' : path === '/collections' ? 'Follow-up queue' : `All ${definition.title.toLowerCase()}`}</h2><p>{filteredRows.length} records <span>·</span> Updated moments ago <span className="demo-label">Demo dataset</span></p></div><Button variant="outline" size="sm" icon={Download} onClick={() => exportRows(filteredRows, definition.title)}>Export</Button></div>
       <div className="table-toolbar"><div className="table-search"><Search size={16} /><Input placeholder={`Search ${definition.title.toLowerCase()}...`} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} aria-label={`Search ${definition.title}`} /></div><div className="table-tools">{filterKey && <Select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1) }} aria-label={definition.filterLabel ?? 'Filter records'}><option value="All">{definition.filterLabel ? `All ${definition.filterLabel.toLowerCase()}s` : 'All statuses'}</option>{filterOptions.map((option) => <option key={option} value={option}>{option}</option>)}</Select>}{path === '/schedules' && <div className="view-switch" role="group" aria-label="Repayment schedule view"><button className={scheduleView === 'list' ? 'view-switch-active' : ''} onClick={() => setScheduleView('list')} aria-pressed={scheduleView === 'list'}><List size={13} />List</button><button className={scheduleView === 'calendar' ? 'view-switch-active' : ''} onClick={() => setScheduleView('calendar')} aria-pressed={scheduleView === 'calendar'}><CalendarDays size={13} />Calendar</button></div>}<Button variant="outline" size="sm" icon={SlidersHorizontal} onClick={() => toast.info('Additional filters will connect to date, officer and branch API filters.')}>Filters</Button></div></div>
       {path === '/schedules' && scheduleView === 'calendar' ? <ScheduleCalendar rows={filteredRows} onOpen={openRow} month={calendarMonth} setMonth={setCalendarMonth} /> : <><div className="table-scroll"><table className="lf-table"><thead><tr>{definition.columns.map((column) => <th key={column.key}><button className="sort-button" onClick={() => setSort((current) => current?.key === column.key ? { key: column.key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key: column.key, direction: 'asc' })}>{column.label}{sort?.key === column.key ? sort.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} /> : <ArrowUpDown size={12} />}</button></th>)}<th className="actions-header"> </th></tr></thead><tbody>
-        {pageRows.map((row, index) => <tr key={String(row.id ?? row.ref ?? index)} onClick={() => openRow(row)} className="data-row">{definition.columns.map((column) => <td key={column.key}>{column.format === 'person' ? <span className="table-person"><Avatar name={String(row[column.key] ?? '—')} size="sm" /><strong>{String(row[column.key] ?? '—')}</strong></span> : column.format === 'status' ? <StatusBadge status={String(row[column.key] ?? 'Unknown')} /> : column.format === 'mono' ? <span className="mono-text">{String(row[column.key] ?? '—')}</span> : column.format === 'tag' ? <span className="soft-tag">{String(row[column.key] ?? '—')}</span> : <span className={column.format === 'money' ? 'money-cell' : ''}>{displayValue(row, column)}</span>}</td>)}<td onClick={(event) => event.stopPropagation()}><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="row-more" aria-label="Record actions"><Ellipsis size={18} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" align="end" sideOffset={4}><DropdownMenu.Item className="dropdown-item" onSelect={() => openRow(row)}><Eye size={15} /> View details</DropdownMenu.Item>{path === '/approvals' && canReview && <><DropdownMenu.Item className="dropdown-item" onSelect={() => void decide(row, 'approve')}>✓ Approve demo</DropdownMenu.Item><DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => void decide(row, 'reject')}>× Reject demo</DropdownMenu.Item></>}{path === '/collections' && <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>}</DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></td></tr>)}
+        {pageRows.map((row, index) => <tr key={String(row.id ?? row.ref ?? index)} onClick={() => openRow(row)} className="data-row">{definition.columns.map((column) => <td key={column.key}>{column.format === 'person' ? <span className="table-person"><Avatar name={String(row[column.key] ?? '—')} size="sm" /><strong>{String(row[column.key] ?? '—')}</strong></span> : column.format === 'status' ? <StatusBadge status={String(row[column.key] ?? 'Unknown')} /> : column.format === 'mono' ? <span className="mono-text">{String(row[column.key] ?? '—')}</span> : column.format === 'tag' ? <span className="soft-tag">{String(row[column.key] ?? '—')}</span> : <span className={column.format === 'money' ? 'money-cell' : ''}>{displayValue(row, column)}</span>}</td>)}<td onClick={(event) => event.stopPropagation()}><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="row-more" aria-label="Record actions"><Ellipsis size={18} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" align="end" sideOffset={4}><DropdownMenu.Item className="dropdown-item" onSelect={() => openRow(row)}><Eye size={15} /> View details</DropdownMenu.Item>{path === '/approvals' && canReview && <><DropdownMenu.Item className="dropdown-item" onSelect={() => requestDecision(row, 'approve')}>✓ Approve demo</DropdownMenu.Item><DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => requestDecision(row, 'reject')}>× Reject demo</DropdownMenu.Item></>}{path === '/collections' && <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>}</DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></td></tr>)}
         {pageRows.length === 0 && <tr><td colSpan={definition.columns.length + 1}><div className="table-empty"><span><Search size={21} /></span><strong>No matching records</strong><p>Try changing your search or filters.</p><Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilter('All') }}>Clear filters</Button></div></td></tr>}
       </tbody></table></div><div className="table-pagination"><span>Showing <strong>{filteredRows.length ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, filteredRows.length)}</strong> of <strong>{filteredRows.length}</strong> records</span><div className="pagination-buttons"><button disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} aria-label="Previous page"><ChevronLeft size={16} /></button><span>Page <strong>{page}</strong> of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} aria-label="Next page"><ChevronRight size={16} /></button></div></div></>}
     </Card>
     <div className="data-footnote">Sample records for interface demonstration. Financial values, approvals and payment status require a connected backend for production.</div>
     <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}><DialogContent title={path === '/collections' ? 'Collection follow-up' : 'Record details'} description={path === '/collections' ? 'Add a clear, respectful note to the local demo record.' : 'Illustrative record information from the demo dataset.'} className="record-dialog">{selected && <div className="record-detail-grid">{Object.entries(selected).filter(([key]) => !['note'].includes(key)).map(([key, value]) => <div className="record-field" key={key}><span>{key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^\w/, (letter) => letter.toUpperCase())}</span><strong>{typeof value === 'number' && ['amount', 'outstanding', 'overdue', 'expected', 'paid', 'income'].includes(key) ? formatUGX(value) : String(value ?? '—')}</strong></div>)}</div>}{path === '/collections' && <div className="followup-note"><span>Previous note</span><p>{String(selected?.note ?? 'No notes on this record yet.')}</p><span>New communication note</span><Input value={followupNote} placeholder="Record a respectful, necessary interaction note…" onChange={(event) => setFollowupNote(event.target.value)} maxLength={500} /></div>}<div className="dialog-actions"><Button variant="outline" onClick={() => setSelected(null)}>Close</Button>{path === '/collections' && <Button onClick={saveFollowup}>Save follow-up</Button>}</div></DialogContent></Dialog>
+    <Dialog open={!!decisionRequest} onOpenChange={(open) => !open && setDecisionRequest(null)}><DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application?`} description="Record a clear decision note. The connected backend must validate permissions and preserve the audit trail." className="record-dialog"><div className="followup-note"><span>Application</span><p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')}</p><span>Decision notes</span><Textarea rows={4} value={decisionNotes} placeholder="Add a clear, reviewable note..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} /></div><div className="dialog-actions"><Button variant="outline" onClick={() => setDecisionRequest(null)}>Go back</Button><Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} onClick={confirmDecision}>Confirm {decisionRequest?.decision}</Button></div></DialogContent></Dialog>
   </div>
 }

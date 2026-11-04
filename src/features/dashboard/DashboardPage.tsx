@@ -33,6 +33,7 @@ export function DashboardPage() {
 
   return <div className="dashboard-page">
     <div className="page-heading dashboard-heading"><div><div className="eyebrow"><span className="live-spark" /> WEDNESDAY, 4 NOVEMBER 2026</div><h1>Good morning, Sarah <span className="wave">✳</span></h1><p>Here’s what’s happening with your loan portfolio today.</p></div><div className="heading-actions"><span className="refresh-note"><span className="online-dot" /> Live demo data</span><Button variant="outline" icon={ListFilter} onClick={() => window.print()}>Export overview</Button></div></div>
+    <section className="welcome-banner"><div><span className="welcome-banner-kicker">LEND FLOW WORKSPACE</span><h2>Keep every lending decision clear and connected.</h2><p>Review portfolio movement, follow up on overdue accounts and keep borrower relationships moving forward.</p></div><Link to="/applications/new" className="welcome-banner-action">Start an application <ArrowRight size={15} /></Link></section>
     <div className="metrics-grid">
       <MetricCard label="Total customers" value="2,104" change="8.4%" icon={Users} color="blue" hint="vs. last month · sample metric" />
       <MetricCard label="Total disbursed" value={formatUGX(246_800_000, true)} change="12.8%" icon={ArrowDownLeft} color="green" hint="vs. last month" />

@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Bell, Building2, ChevronDown, CircleHelp, Command, CreditCard, LayoutDashboard, Menu, PanelLeftClose, Plus, Search, ShieldCheck, Users, Wallet, X } from 'lucide-react'
+import { Bell, Building2, ChevronDown, CircleHelp, Command, CreditCard, LayoutDashboard, Menu, Moon, PanelLeftClose, Plus, Search, ShieldCheck, Sun, Users, Wallet, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useDispatch, useSelector } from 'react-redux'
-import { closeSidebar, setRole, toggleSidebar, type RootState } from '../store/store'
+import { closeSidebar, setRole, toggleSidebar, toggleTheme, type RootState } from '../store/store'
 import { customers, loans } from '../data/mock-data'
 import { Avatar } from './ui/primitives'
 import { toast } from 'sonner'
@@ -23,9 +23,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const dispatch = useDispatch()
   const sidebarOpen = useSelector((state: RootState) => state.session.sidebarOpen)
   const role = useSelector((state: RootState) => state.session.role)
+  const theme = useSelector((state: RootState) => state.session.theme)
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const navigate = useNavigate()
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('lendflow-theme', theme)
+  }, [theme])
   const results = useMemo(() => {
     if (query.trim().length < 2) return []
     const q = query.toLowerCase()
@@ -47,9 +52,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </aside>
     {sidebarOpen && <button className="sidebar-scrim" onClick={() => dispatch(closeSidebar())} aria-label="Close navigation" />}
     <div className="main-column">
-      <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={() => dispatch(toggleSidebar())} aria-label="Open menu"><Menu size={20} /></button><div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{current?.label ?? 'Overview'}</strong></div></div>
+      <header className="topbar"><div className="topbar-left"><button className="mobile-menu" onClick={() => dispatch(toggleSidebar())} aria-label="Open menu"><Menu size={20} /></button>{location.pathname !== '/' && <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{current?.label ?? 'Overview'}</strong></div>}</div>
         <div className="topbar-right"><div className="global-search-wrap"><Search size={16} className="search-icon" /><input value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true) }} onFocus={() => setSearchOpen(true)} onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); if (event.key === 'Enter' && results[0]) selectResult(results[0].path) }} placeholder="Search anything..." aria-label="Search customers and loans" /><kbd>⌘ K</kbd>{searchOpen && query.length >= 2 && <div className="search-results">{results.length ? results.map((result) => <button key={result.path} onMouseDown={() => selectResult(result.path)}><span className="search-result-icon"><Search size={15} /></span><span><strong>{result.title}</strong><small>{result.meta}</small></span><span className="search-enter">↵</span></button>) : <p>No matching records found.</p>}</div>}</div>
-          <button className="topbar-icon-button" onClick={() => toast('You’re all caught up', { description: 'New notifications will appear here.' })} aria-label="Notifications"><Bell size={18} /><span className="notification-dot" /></button><span className="topbar-divider" />
+          <button className="topbar-icon-button" onClick={() => dispatch(toggleTheme())} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button><button className="topbar-icon-button" onClick={() => toast('You’re all caught up', { description: 'New notifications will appear here.' })} aria-label="Notifications"><Bell size={18} /><span className="notification-dot" /></button><span className="topbar-divider" />
           <DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="profile-trigger"><Avatar name="Sarah Kiconco" size="sm" /><span className="profile-meta"><strong>Sarah Kiconco</strong><small>{role}</small></span><ChevronDown size={14} /></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" align="end" sideOffset={8}><div className="dropdown-label">DEMO ROLE</div>{['Manager', 'Loan Officer', 'Approver', 'Cashier', 'Collections Officer'].map((item) => <DropdownMenu.Item key={item} className="dropdown-item" onSelect={() => { dispatch(setRole(item)); toast.success(`Demo role switched to ${item}`) }}>{item}{role === item && <span>✓</span>}</DropdownMenu.Item>)}<DropdownMenu.Separator className="dropdown-separator" /><DropdownMenu.Item className="dropdown-item" onSelect={() => navigate('/settings')}>Profile & settings</DropdownMenu.Item><DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => navigate('/login')}>Sign out</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root>
         </div>
       </header>
