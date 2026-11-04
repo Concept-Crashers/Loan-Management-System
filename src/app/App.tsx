@@ -12,6 +12,8 @@ import { RepaymentForm } from '../features/repayments/RepaymentForm'
 import { AuthPages } from '../features/management/AuthRouteFix'
 import { pageRegistry } from './page-registry'
 import { SettingsPage } from '../features/management/SettingsPage'
+import { ProfileSecurityPage } from '../features/management/ProfileSecurityPage'
+import { OperationsCenterPage } from '../features/management/OperationsCenterPage'
 
 const ReportsPage = lazy(() => import('../features/management/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
@@ -53,6 +55,10 @@ export function App() {
       <Route path="staff" element={<PageForPath path="/staff" />} />
       <Route path="audit-logs" element={<PageForPath path="/audit-logs" />} />
       <Route path="settings" element={<SettingsPage />} />
+      <Route path="profile-security" element={<ProfileSecurityPage />} />
+      <Route path="documents" element={<OperationsCenterPage initialTab="documents" />} />
+      <Route path="imports" element={<OperationsCenterPage initialTab="imports" />} />
+      <Route path="activity" element={<OperationsCenterPage initialTab="activity" />} />
       <Route path="*" element={<NotFoundPage />} />
     </Route>
   </Routes>
