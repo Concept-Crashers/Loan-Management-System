@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
+import { IdentityModel } from '../modules/identity/identity.model.js'
 import { env } from '../config/env.js'
 import { HttpError } from './http.js'
 
@@ -10,13 +11,15 @@ export function signAccessToken(user: AuthUser) {
   return jwt.sign({ sub: user.id, tenantId: user.tenantId, branchIds: user.branchIds, roles: user.roles, permissions: user.permissions }, env.JWT_ACCESS_SECRET, { expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
 }
 
-export function requireAuth(request: AuthRequest, _response: Response, next: NextFunction) {
+export async function requireAuth(request: AuthRequest, _response: Response, next: NextFunction) {
   const header = request.header('authorization')
   if (!header?.startsWith('Bearer ')) return next(new HttpError(401, 'UNAUTHENTICATED', 'Authentication is required.'))
   try {
     const payload = jwt.verify(header.slice(7), env.JWT_ACCESS_SECRET) as jwt.JwtPayload
     if (typeof payload.sub !== 'string') throw new Error('Invalid subject')
-    request.user = { id: payload.sub, tenantId: String(payload.tenantId), branchIds: Array.isArray(payload.branchIds) ? payload.branchIds.map(String) : [], roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [], permissions: Array.isArray(payload.permissions) ? payload.permissions.map(String) : [] }
+    const identity = await IdentityModel.findById(payload.sub).select('tenantId branchIds roles permissions status').lean()
+    if (!identity || identity.status !== 'active') throw new Error('Inactive identity')
+    request.user = { id: identity._id.toString(), tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
     next()
   } catch {
     next(new HttpError(401, 'INVALID_TOKEN', 'The access token is invalid or expired.'))

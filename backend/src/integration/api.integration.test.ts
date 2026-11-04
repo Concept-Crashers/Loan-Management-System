@@ -21,4 +21,14 @@ describe('API integration foundation', () => {
     const metrics = await fetch(`http://127.0.0.1:${port}/metrics`)
     expect(await metrics.text()).toContain('lendflow_http_requests_total')
   })
+
+  it('rejects state-changing API requests without a CSRF token', async () => {
+    server = createServer(app)
+    await new Promise<void>((resolve) => server?.listen(0, resolve))
+    const address = server.address()
+    const port = typeof address === 'object' && address ? address.port : 0
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/auth/logout`, { method: 'POST' })
+    expect(response.status).toBe(403)
+    expect((await response.json()).code).toBe('CSRF_INVALID')
+  })
 })

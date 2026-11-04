@@ -1,4 +1,5 @@
 import express from 'express'
+import crypto from 'node:crypto'
 import cors from 'cors'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
@@ -29,6 +30,19 @@ app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: true }))
 app.use(express.json({ limit: '1mb' }))
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true }))
 app.use(correlationMiddleware)
+app.use((request, response, next) => {
+  const cookie = request.header('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith('lendflow_csrf='))?.slice('lendflow_csrf='.length)
+  const csrfToken = cookie ?? crypto.randomBytes(24).toString('base64url')
+  if (!cookie) response.cookie('lendflow_csrf', csrfToken, { httpOnly: false, secure: env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/' })
+  const exempt = request.path.includes('/auth/login') || request.path.includes('/auth/refresh') || request.path.includes('/auth/forgot-password') || request.path.includes('/auth/reset-password') || request.path.includes('/auth/verify-email')
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS' && !exempt && request.path.startsWith('/api/')) {
+    if (request.header('x-csrf-token') !== csrfToken) {
+      response.status(403).json({ success: false, message: 'CSRF validation failed.', code: 'CSRF_INVALID', errors: [] })
+      return
+    }
+  }
+  next()
+})
 
 app.get('/health', asyncRoute(async (_request, response) => {
   response.json({ success: true, message: 'LendFlow API is healthy', data: { status: 'ok', timestamp: new Date().toISOString() } })

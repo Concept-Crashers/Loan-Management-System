@@ -15,6 +15,10 @@ let refreshPromise: Promise<boolean> | null = null
 
 export function setAccessToken(token: string | null) { accessToken = token }
 export function getAuthenticatedUser() { return authenticatedUser }
+function csrfToken() {
+  if (typeof document === 'undefined') return null
+  return document.cookie.split('; ').find((cookie) => cookie.startsWith('lendflow_csrf='))?.slice('lendflow_csrf='.length) ?? null
+}
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
@@ -36,6 +40,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, canRef
   const headers = new Headers(init.headers)
   headers.set('Content-Type', 'application/json')
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  const method = (init.method ?? 'GET').toUpperCase()
+  const csrf = csrfToken()
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) headers.set('X-CSRF-Token', csrf)
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: 'include' })
   if (response.status === 401 && canRefresh && await refreshAccessToken()) return apiRequest<T>(path, init, false)
   const body = await response.json().catch(() => null) as ApiEnvelope<T> | null
