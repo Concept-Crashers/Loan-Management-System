@@ -25,6 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const sidebarOpen = useSelector((state: RootState) => state.session.sidebarOpen)
   const role = useSelector((state: RootState) => state.session.role)
   const theme = useSelector((state: RootState) => state.session.theme)
+  const branding = useSelector((state: RootState) => state.branding)
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
@@ -59,10 +60,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return <div className="app-frame">
     <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
-      <div className="brand-lockup"><div className="brand-mark"><span /><span /><span /></div><div className="brand-copy"><strong>LendFlow</strong><small>LOAN OPERATIONS</small></div><button className="mobile-close" onClick={() => dispatch(closeSidebar())} aria-label="Close menu"><X size={18} /></button></div>
+      <div className="brand-lockup">{branding.logoDataUrl ? <img className="brand-logo-image" src={branding.logoDataUrl} alt="" /> : <div className="brand-mark"><span /><span /><span /></div>}<div className="brand-copy"><strong>{branding.companyName}</strong><small>{branding.tagline}</small></div><button className="mobile-close" onClick={() => dispatch(closeSidebar())} aria-label="Close menu"><X size={18} /></button></div>
       <div className="branch-switcher"><span className="branch-avatar"><Building2 size={15} /></span><span><strong>Kampala Central</strong><small>Primary branch</small></span><ChevronDown size={14} className="branch-chevron" /></div>
       <nav className="sidebar-nav" aria-label="Main navigation">{groups.map((group) => <div className="nav-group" key={group.label}><button className="nav-group-label nav-group-toggle" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))} aria-expanded={!collapsedGroups[group.label]}>{group.label}<ChevronDown size={11} /></button>{!collapsedGroups[group.label] && group.items.map(({ label, to, icon: Icon, badge }) => <NavLink key={to} to={to} end={to === '/'} onClick={() => dispatch(closeSidebar())} className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <span className="nav-badge">{badge}</span>}</NavLink>)}</div>)}</nav>
-      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17} /></span><strong>Need a hand?</strong><p>Explore the getting started guide.</p><button onClick={() => toast.info('Help centre will connect in a future release.')}>Open help centre <span>→</span></button></div><div className="sidebar-version"><span className="online-dot" /> Demo workspace <span className="version-pill">MVP</span></div></div>
+      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17} /></span><strong>Need a hand?</strong><p>Explore the getting started guide.</p><button onClick={() => toast.info('Help centre will connect in a future release.')}>Open help centre <span>→</span></button></div><div className="sidebar-version"><span className="online-dot" /> {branding.companyName} <span className="version-pill">MVP</span></div></div>
     </aside>
     {sidebarOpen && <button className="sidebar-scrim" onClick={() => dispatch(closeSidebar())} aria-label="Close navigation" />}
     <div className="main-column">

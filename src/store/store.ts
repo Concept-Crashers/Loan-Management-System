@@ -2,8 +2,24 @@ import { configureStore, createSlice, type PayloadAction } from '@reduxjs/toolki
 
 type Theme = 'light' | 'dark'
 interface SessionState { role: string; sidebarOpen: boolean; theme: Theme; user: { id: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] } | null; authStatus: 'unknown' | 'authenticated' | 'anonymous' }
+export interface BrandingState { companyName: string; tagline: string; country: string; currency: string; logoDataUrl: string | null }
+const defaultBranding: BrandingState = { companyName: 'LendFlow Microfinance', tagline: 'LOAN OPERATIONS', country: 'Uganda', currency: 'UGX', logoDataUrl: null }
+function loadBranding(): BrandingState {
+  if (typeof window === 'undefined') return defaultBranding
+  try { return { ...defaultBranding, ...JSON.parse(window.localStorage.getItem('lendflow-branding') ?? '{}') } as BrandingState } catch { return defaultBranding }
+}
 const initialTheme: Theme = typeof window !== 'undefined' && window.localStorage.getItem('lendflow-theme') === 'dark' ? 'dark' : 'light'
 const initialState: SessionState = { role: '', sidebarOpen: false, theme: initialTheme, user: null, authStatus: 'unknown' }
+const brandingSlice = createSlice({
+  name: 'branding',
+  initialState: loadBranding(),
+  reducers: {
+    setBranding(_state, action: PayloadAction<BrandingState>) {
+      if (typeof window !== 'undefined') window.localStorage.setItem('lendflow-branding', JSON.stringify(action.payload))
+      return action.payload
+    },
+  },
+})
 const sessionSlice = createSlice({
   name: 'session', initialState,
   reducers: {
@@ -18,6 +34,7 @@ const sessionSlice = createSlice({
 })
 
 export const { setRole, setTheme, toggleTheme, toggleSidebar, closeSidebar, setUser, setAuthStatus } = sessionSlice.actions
-export const store = configureStore({ reducer: { session: sessionSlice.reducer } })
+export const { setBranding } = brandingSlice.actions
+export const store = configureStore({ reducer: { session: sessionSlice.reducer, branding: brandingSlice.reducer } })
 export type RootState = ReturnType<typeof store.getState>
 export type AppDispatch = typeof store.dispatch
