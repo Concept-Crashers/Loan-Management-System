@@ -61,3 +61,21 @@ disbursementSchema.index({ tenantId: 1, idempotencyKey: 1 }, { unique: true })
 disbursementSchema.index({ tenantId: 1, applicationId: 1 }, { unique: true })
 disbursementSchema.index({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
 export const DisbursementModel = model('Disbursement', disbursementSchema)
+
+const cashbookSchema = new Schema({
+  tenantId: { type: String, required: true, index: true }, branchId: { type: String, required: true, index: true },
+  account: { type: String, required: true }, direction: { type: String, enum: ['in', 'out'], required: true },
+  amountMinor: { type: Number, required: true, min: 1 }, reference: { type: String, required: true },
+  status: { type: String, enum: ['open', 'settled', 'void'], default: 'open', index: true }, settledAt: Date, settledBy: String,
+}, { timestamps: true })
+cashbookSchema.index({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+cashbookSchema.index({ tenantId: 1, reference: 1 }, { unique: true })
+export const CashbookModel = model('CashbookEntry', cashbookSchema)
+
+const loanEventSchema = new Schema({
+  tenantId: { type: String, required: true, index: true }, branchId: { type: String, required: true, index: true },
+  loanAccountId: { type: Schema.Types.ObjectId, ref: 'LoanAccount', required: true }, type: { type: String, required: true },
+  reason: { type: String, required: true }, metadata: Schema.Types.Mixed, createdBy: { type: String, required: true },
+}, { timestamps: true })
+loanEventSchema.index({ tenantId: 1, loanAccountId: 1, createdAt: -1 })
+export const LoanEventModel = model('LoanEvent', loanEventSchema)

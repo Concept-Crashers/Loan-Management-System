@@ -36,10 +36,34 @@ router.get('/:customerId/:key', requirePermission('customers.view'), asyncRoute(
   const user = currentUser(request)
   const customer = await CustomerModel.findOne({ _id: request.params.customerId, tenantId: user.tenantId })
   const document = customer?.documents.find((item) => item.key === request.params.key)
-  if (!customer || !document || document.status !== 'available') throw new HttpError(404, 'DOCUMENT_NOT_AVAILABLE', 'The document is not available for download.')
+  if (!customer || !document || document.status !== 'available' || document.deletedAt || document.expiresAt && document.expiresAt <= new Date()) throw new HttpError(404, 'DOCUMENT_NOT_AVAILABLE', 'The document is not available for download.')
   const resource = await inspectUploadedDocument(document.storageKey)
   await recordAudit({ user, action: 'customer.document_downloaded', entityType: 'customer_document', entityId: document.key, branchId: customer.branchId, next: { status: document.status } })
   response.json({ success: true, message: 'Secure document metadata retrieved', data: { url: resource.secure_url, expiresInSeconds: 300 } })
+}))
+router.post('/:customerId/:key/retention', requirePermission('customers.update'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ expiresAt: z.coerce.date().nullable().optional(), legalHold: z.boolean().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const customer = await CustomerModel.findOne({ _id: request.params.customerId, tenantId: user.tenantId })
+  const document = customer?.documents.find((item) => item.key === request.params.key)
+  if (!customer || !document) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', 'The document was not found.')
+  if (input.expiresAt !== undefined) document.expiresAt = input.expiresAt ?? undefined
+  if (input.legalHold !== undefined) document.legalHold = input.legalHold
+  await customer.save()
+  await recordAudit({ user, action: 'customer.document_retention_updated', entityType: 'customer_document', entityId: document.key, branchId: customer.branchId, next: { expiresAt: document.expiresAt, legalHold: document.legalHold } })
+  response.json({ success: true, message: 'Document retention settings updated', data: document })
+}))
+router.delete('/:customerId/:key', requirePermission('customers.update'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const customer = await CustomerModel.findOne({ _id: request.params.customerId, tenantId: user.tenantId })
+  const document = customer?.documents.find((item) => item.key === request.params.key)
+  if (!customer || !document) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', 'The document was not found.')
+  if (document.legalHold) throw new HttpError(409, 'DOCUMENT_LEGAL_HOLD', 'Documents under legal hold cannot be deleted.')
+  document.deletedAt = new Date()
+  document.deletedBy = user.id
+  await customer.save()
+  await recordAudit({ user, action: 'customer.document_deleted', entityType: 'customer_document', entityId: document.key, branchId: customer.branchId, next: { deletedAt: document.deletedAt } })
+  response.json({ success: true, message: 'Document marked for deletion', data: { key: document.key, deletedAt: document.deletedAt } })
 }))
 
 router.post('/webhook', asyncRoute(async (request, response) => {

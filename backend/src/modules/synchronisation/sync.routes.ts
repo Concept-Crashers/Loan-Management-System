@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
 import { asyncRoute } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
-import { SyncCounterModel, SyncOperationModel } from './sync.model.js'
+import { SyncConflictModel, SyncCounterModel, SyncOperationModel } from './sync.model.js'
 import { DeviceModel } from './device.model.js'
 
 const router = Router()
@@ -46,6 +46,21 @@ router.get('/status', requirePermission('devices.register'), asyncRoute(async (r
   const user = currentUser(request)
   const data = await SyncOperationModel.aggregate([{ $match: { tenantId: user.tenantId } }, { $group: { _id: '$status', count: { $sum: 1 } } }])
   response.json({ success: true, message: 'Synchronisation status retrieved successfully', data })
+}))
+router.get('/conflicts', requirePermission('devices.register'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const data = await SyncConflictModel.find({ tenantId: user.tenantId, status: 'open' }).sort({ createdAt: -1 }).limit(100).lean()
+  response.json({ success: true, message: 'Synchronisation conflicts retrieved successfully', data })
+}))
+router.post('/conflicts/:id/resolve', requirePermission('devices.register'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ resolution: z.enum(['accept_local', 'accept_server', 'manual']), payload: z.record(z.string(), z.unknown()).optional() }).parse(request.body)
+  const user = currentUser(request)
+  const conflict = await SyncConflictModel.findOneAndUpdate({ _id: request.params.id, tenantId: user.tenantId, status: 'open' }, { $set: { status: 'resolved', resolution: { type: input.resolution, payload: input.payload }, resolvedBy: user.id, resolvedAt: new Date() } }, { new: true }).lean()
+  if (!conflict) {
+    response.status(404).json({ success: false, message: 'Open synchronisation conflict was not found.', code: 'CONFLICT_NOT_FOUND' })
+    return
+  }
+  response.json({ success: true, message: 'Synchronisation conflict resolved', data: conflict })
 }))
 
 router.get('/pull', requirePermission('devices.register'), asyncRoute(async (request: AuthRequest, response) => {

@@ -4,6 +4,7 @@ const documentSchema = new Schema({
   key: { type: String, required: true }, name: { type: String, required: true },
   mimeType: { type: String, required: true }, size: { type: Number, required: true },
   storageKey: { type: String, required: true }, status: { type: String, enum: ['pending_scan', 'available', 'rejected'], default: 'pending_scan' },
+  expiresAt: { type: Date }, legalHold: { type: Boolean, default: false }, deletedAt: { type: Date }, deletedBy: { type: String },
 }, { timestamps: true })
 
 const customerSchema = new Schema({

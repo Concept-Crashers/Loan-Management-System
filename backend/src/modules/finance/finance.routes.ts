@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, type AuthRequest } from '../../core/aut
 import { asyncRoute, HttpError } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
-import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel } from './finance.model.js'
+import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, CashbookModel, LoanEventModel } from './finance.model.js'
 import mongoose from 'mongoose'
 import { ApplicationModel } from '../applications/application.model.js'
 
@@ -33,6 +33,31 @@ router.get('/journal', requirePermission('accounting.journal.view'), asyncRoute(
   if (branchId) assertBranchAccess(request, branchId)
   const data = await JournalModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ createdAt: -1 }).limit(200).lean()
   response.json({ success: true, message: 'Journal entries retrieved successfully', data })
+}))
+router.get('/cashbook', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const data = await CashbookModel.find({ tenantId: user.tenantId, branchId: { $in: user.branchIds } }).sort({ createdAt: -1 }).limit(500).lean()
+  response.json({ success: true, message: 'Cashbook entries retrieved successfully', data })
+}))
+router.post('/cashbook/:id/settle', requirePermission('accounting.reconciliation.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const entry = await CashbookModel.findOneAndUpdate({ _id: request.params.id, tenantId: user.tenantId, branchId: { $in: user.branchIds }, status: 'open' }, { $set: { status: 'settled', settledAt: new Date(), settledBy: user.id } }, { new: true })
+  if (!entry) throw new HttpError(404, 'CASHBOOK_ENTRY_NOT_FOUND', 'Open cashbook entry was not found.')
+  await recordAudit({ user, action: 'cashbook.settled', entityType: 'cashbook_entry', entityId: entry.id, branchId: entry.branchId, next: { status: entry.status } })
+  response.json({ success: true, message: 'Cashbook entry settled', data: entry })
+}))
+router.post('/loans/:id/lifecycle', requirePermission('loans.accounts.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ type: z.enum(['restructure', 'refinance', 'write_off', 'settle', 'penalty']), reason: z.string().min(3), metadata: z.record(z.string(), z.unknown()).optional() }).parse(request.body)
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId, branchId: { $in: user.branchIds } })
+  if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
+  if (input.type === 'write_off') loan.status = 'written_off'
+  if (input.type === 'settle') loan.status = 'settled'
+  if (input.type === 'restructure') loan.status = 'restructured'
+  await loan.save()
+  const event = await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: input.type, reason: input.reason, metadata: input.metadata, createdBy: user.id })
+  await recordAudit({ user, action: `loan.${input.type}`, entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: { status: loan.status, reason: input.reason } })
+  response.status(201).json({ success: true, message: `Loan ${input.type} recorded`, data: { loan, event } })
 }))
 router.post('/journal', requirePermission('accounting.journal.create'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ branchId: z.string(), sourceType: z.string().min(2), sourceId: z.string().min(1), lines: z.array(z.object({ account: z.string().min(2), debitMinor: z.number().int().nonnegative().default(0), creditMinor: z.number().int().nonnegative().default(0) })).min(2) }).parse(request.body)
