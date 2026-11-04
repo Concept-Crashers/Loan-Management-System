@@ -29,6 +29,21 @@ Typical responsibilities are:
 
 If a required menu is missing, ask an administrator to review the user’s server-side role and permissions.
 
+## 3. Creating the first system administrator
+
+Run this command from the `backend` directory. It requires an active MongoDB connection and reads the password only from the environment:
+
+```bash
+SYSTEM_ADMIN_EMAIL=admin@example.com \
+SYSTEM_ADMIN_NAME="System Administrator" \
+SYSTEM_ADMIN_TENANT_ID=tenant-id \
+SYSTEM_ADMIN_BRANCH_IDS=branch-id \
+SYSTEM_ADMIN_PASSWORD='Use-a-new-12-character-password' \
+npm run create-system-admin
+```
+
+The command refuses to overwrite an existing account. Use a secret manager in production rather than storing the password in shell history or a committed file.
+
 ## 3. Daily lending workflow
 
 1. Register or locate the customer in **Customers**.

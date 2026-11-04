@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
-import { asyncRoute } from '../../core/http.js'
+import { asyncRoute, HttpError } from '../../core/http.js'
 import { currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { LoanProductModel } from './loan-product.model.js'
@@ -16,6 +16,11 @@ const terms = z.object({
 const input = z.object({ code: z.string().min(2), name: z.string().min(2), category: z.enum(['individual', 'group']), terms, approvalLimitMinor: z.number().int().nonnegative() })
 
 router.use(requireAuth)
+router.get('/:id', requirePermission('loans.products.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const product = await LoanProductModel.findOne({ _id: request.params.id, tenantId: currentUser(request).tenantId }).lean()
+  if (!product) throw new HttpError(404, 'LOAN_PRODUCT_NOT_FOUND', 'Loan product was not found.')
+  response.json({ success: true, message: 'Loan product retrieved successfully', data: product })
+}))
 router.get('/', requirePermission('loans.products.view'), asyncRoute(async (request: AuthRequest, response) => {
   const data = await LoanProductModel.find({ tenantId: currentUser(request).tenantId }).sort({ name: 1, version: -1 }).lean()
   response.json({ success: true, message: 'Loan products retrieved successfully', data })

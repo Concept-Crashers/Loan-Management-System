@@ -38,7 +38,9 @@ export const PaymentModel = model('Repayment', paymentSchema)
 
 const journalSchema = new Schema({
   tenantId: { type: String, required: true, index: true }, branchId: { type: String, required: true, index: true },
-  sourceType: { type: String, required: true }, sourceId: { type: String, required: true }, lines: { type: [Schema.Types.Mixed], required: true },
+  sourceType: { type: String, required: true }, sourceId: { type: String, required: true },
+  periodId: { type: Schema.Types.ObjectId, ref: 'AccountingPeriod' }, postedAt: { type: Date, default: Date.now },
+  lines: { type: [Schema.Types.Mixed], required: true },
   immutable: { type: Boolean, default: true },
 }, { timestamps: true })
 journalSchema.path('lines').validate((lines: Array<{ debitMinor?: number; creditMinor?: number }>) => {
@@ -48,6 +50,23 @@ journalSchema.path('lines').validate((lines: Array<{ debitMinor?: number; credit
   return debit > 0 && debit === credit && lines.every((line) => (Number(line.debitMinor) || 0) >= 0 && (Number(line.creditMinor) || 0) >= 0)
 }, 'Journal entry must contain at least two balanced, non-negative lines')
 export const JournalModel = model('JournalEntry', journalSchema)
+
+const chartAccountSchema = new Schema({
+  tenantId: { type: String, required: true, index: true }, code: { type: String, required: true },
+  name: { type: String, required: true }, type: { type: String, enum: ['asset', 'liability', 'equity', 'income', 'expense'], required: true },
+  active: { type: Boolean, default: true }, system: { type: Boolean, default: false },
+}, { timestamps: true })
+chartAccountSchema.index({ tenantId: 1, code: 1 }, { unique: true })
+export const ChartAccountModel = model('ChartAccount', chartAccountSchema)
+
+const accountingPeriodSchema = new Schema({
+  tenantId: { type: String, required: true, index: true }, branchId: { type: String, required: true, index: true },
+  periodStart: { type: Date, required: true }, periodEnd: { type: Date, required: true },
+  status: { type: String, enum: ['open', 'closed'], default: 'open', index: true },
+  openedBy: { type: String, required: true }, closedBy: String, closedAt: Date,
+}, { timestamps: true })
+accountingPeriodSchema.index({ tenantId: 1, branchId: 1, periodStart: 1, periodEnd: 1 }, { unique: true })
+export const AccountingPeriodModel = model('AccountingPeriod', accountingPeriodSchema)
 
 const disbursementSchema = new Schema({
   tenantId: { type: String, required: true, index: true }, branchId: { type: String, required: true, index: true },

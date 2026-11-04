@@ -13,6 +13,13 @@ import { generateRepaymentSchedule } from '../finance/schedule.js'
 const router = Router()
 const createInput = z.object({ branchId: z.string().min(1), customerId: z.string().min(1), productId: z.string().min(1), amountMinor: z.number().int().positive(), tenureMonths: z.number().int().positive(), purpose: z.string().min(5), incomeMinor: z.number().int().nonnegative(), obligationsMinor: z.number().int().nonnegative() })
 router.use(requireAuth)
+router.get('/:id', requirePermission('loans.applications.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).lean()
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  response.json({ success: true, message: 'Application retrieved successfully', data: application })
+}))
 
 router.get('/', requirePermission('loans.applications.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)

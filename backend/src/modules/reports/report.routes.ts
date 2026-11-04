@@ -12,7 +12,8 @@ router.get('/summary', asyncRoute(async (request: AuthRequest, response) => {
   const tenantId = currentUser(request).tenantId
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   if (branchId) assertBranchAccess(request, branchId)
-  const scope = { tenantId, ...(branchId ? { branchId } : {}) }
+  const dateScope = request.query.from || request.query.to ? { createdAt: { ...(request.query.from ? { $gte: new Date(String(request.query.from)) } : {}), ...(request.query.to ? { $lte: new Date(String(request.query.to)) } : {}) } } : {}
+  const scope = { tenantId, ...(branchId ? { branchId } : {}), ...dateScope }
   const [customers, applications, statuses, loans, payments, outstanding] = await Promise.all([
     CustomerModel.countDocuments(scope),
     ApplicationModel.countDocuments(scope),
@@ -23,6 +24,20 @@ router.get('/summary', asyncRoute(async (request: AuthRequest, response) => {
   ])
   const balance = outstanding[0] ?? { principalMinor: 0, interestMinor: 0, feesMinor: 0 }
   response.json({ success: true, message: 'Report summary retrieved successfully', data: { generatedAt: new Date().toISOString(), scope: branchId ? { branchId } : { tenantId }, customers, applications, loans, applicationsByStatus: statuses, payments, outstanding: balance } })
+}))
+router.get('/summary/export', asyncRoute(async (request: AuthRequest, response) => {
+  const tenantId = currentUser(request).tenantId
+  const branchId = request.query.branchId ? String(request.query.branchId) : undefined
+  if (branchId) assertBranchAccess(request, branchId)
+  const scope = { tenantId, ...(branchId ? { branchId } : {}) }
+  const [customers, applications, loans, payments] = await Promise.all([
+    CustomerModel.countDocuments(scope),
+    ApplicationModel.countDocuments(scope),
+    LoanAccountModel.countDocuments(scope),
+    PaymentModel.aggregate([{ $match: scope }, { $group: { _id: '$status', count: { $sum: 1 }, amountMinor: { $sum: '$amountMinor' } } }]),
+  ])
+  const csv = ['metric,value', `customers,${customers}`, `applications,${applications}`, `loans,${loans}`, ...payments.map((row) => `payments_${row._id},${row.count}:${row.amountMinor}`)].join('\n')
+  response.type('text/csv').setHeader('Content-Disposition', 'attachment; filename="portfolio-summary.csv"').send(csv)
 }))
 router.get('/dashboard', asyncRoute(async (request: AuthRequest, response) => {
   const tenantId = currentUser(request).tenantId

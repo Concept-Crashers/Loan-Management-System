@@ -16,6 +16,8 @@ import { ProfileSecurityPage } from '../features/management/ProfileSecurityPage'
 import { OperationsCenterPage } from '../features/management/OperationsCenterPage'
 import { ProtectedRoute } from '../components/ProtectedRoute'
 import { EnterpriseOperationsPage } from '../features/management/EnterpriseOperationsPage'
+import { AccountingPage } from '../features/management/AccountingPage'
+import { AuditLogsPage } from '../features/management/AuditLogsPage'
 
 const ReportsPage = lazy(() => import('../features/management/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
@@ -55,13 +57,14 @@ export function App() {
       <Route path="reports" element={<Suspense fallback={<div className="page-loading">Loading report workspace…</div>}><ReportsPage /></Suspense>} />
       <Route path="branches" element={<PageForPath path="/branches" />} />
       <Route path="staff" element={<PageForPath path="/staff" />} />
-      <Route path="audit-logs" element={<PageForPath path="/audit-logs" />} />
+      <Route path="audit-logs" element={<AuditLogsPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="profile-security" element={<ProfileSecurityPage />} />
       <Route path="documents" element={<OperationsCenterPage initialTab="documents" />} />
       <Route path="imports" element={<OperationsCenterPage initialTab="imports" />} />
       <Route path="activity" element={<OperationsCenterPage initialTab="activity" />} />
       <Route path="enterprise-operations" element={<EnterpriseOperationsPage />} />
+      <Route path="accounting" element={<AccountingPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Route>
   </Routes>

@@ -4,6 +4,7 @@ import { requireAuth, requirePermission, type AuthRequest } from '../../core/aut
 import { asyncRoute, HttpError } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
 import { ReconciliationModel } from './reconciliation.model.js'
+import { pagination, paged } from '../../core/pagination.js'
 
 const router = Router()
 router.use(requireAuth, requirePermission('accounting.reconciliation.manage'))
@@ -11,8 +12,8 @@ router.get('/', asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   if (branchId) assertBranchAccess(request, branchId)
-  const data = await ReconciliationModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ periodEnd: -1 }).limit(200).lean()
-  response.json({ success: true, message: 'Reconciliations retrieved successfully', data })
+  const result = await paged(ReconciliationModel, { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }, pagination(request), { periodEnd: -1 })
+  response.json({ success: true, message: 'Reconciliations retrieved successfully', ...result })
 }))
 router.post('/', asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ branchId: z.string(), periodStart: z.coerce.date(), periodEnd: z.coerce.date(), expectedMinor: z.number().int().nonnegative(), actualMinor: z.number().int().nonnegative(), notes: z.string().max(2000).default('') }).refine((value) => value.periodEnd >= value.periodStart, { message: 'periodEnd must be on or after periodStart', path: ['periodEnd'] }).parse(request.body)

@@ -15,6 +15,13 @@ const customerInput = z.object({
 })
 
 router.use(requireAuth)
+router.get('/:id', requirePermission('customers.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const customer = await CustomerModel.findOne({ tenantId: user.tenantId, $or: [{ _id: request.params.id }, { customerNumber: request.params.id }] }).select('-nationalId').lean()
+  if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found.')
+  assertBranchAccess(request, customer.branchId)
+  response.json({ success: true, message: 'Customer retrieved successfully', data: customer })
+}))
 router.get('/', requirePermission('customers.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const query = z.object({ branchId: z.string().optional(), search: z.string().optional(), page: z.coerce.number().int().positive().default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query)
