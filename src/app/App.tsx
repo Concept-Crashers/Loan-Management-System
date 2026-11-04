@@ -14,6 +14,7 @@ import { pageRegistry } from './page-registry'
 import { SettingsPage } from '../features/management/SettingsPage'
 import { ProfileSecurityPage } from '../features/management/ProfileSecurityPage'
 import { OperationsCenterPage } from '../features/management/OperationsCenterPage'
+import { ProtectedRoute } from '../components/ProtectedRoute'
 
 const ReportsPage = lazy(() => import('../features/management/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
@@ -28,7 +29,7 @@ export function App() {
   return <Routes>
     <Route path="/login" element={<AuthPages page="login" />} />
     <Route path="/forgot-password" element={<AuthPages page="forgot" />} />
-    <Route element={<WorkspaceLayout />}>
+    <Route element={<ProtectedRoute><WorkspaceLayout /></ProtectedRoute>}>
       <Route index element={<DashboardPage />} />
       <Route path="customers" element={<PageForPath path="/customers" />} />
       <Route path="customers/new" element={<CustomerForm />} />

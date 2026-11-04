@@ -32,7 +32,8 @@ router.post('/', requirePermission('customers.create'), asyncRoute(async (reques
   const user = currentUser(request)
   const customer = await CustomerModel.create({ ...input, tenantId: user.tenantId, customerNumber: `CUS-${Date.now()}` })
   await recordAudit({ user, action: 'customer.created', entityType: 'customer', entityId: customer.id, branchId: input.branchId, next: { name: customer.name, phone: customer.phone } })
-  response.status(201).json({ success: true, message: 'Customer created successfully', data: customer.toObject({ transform: (_doc, value) => { delete value.nationalId; return value } }) })
+  const { nationalId: _nationalId, ...data } = customer.toObject()
+  response.status(201).json({ success: true, message: 'Customer created successfully', data })
 }))
 
 router.patch('/:id', requirePermission('customers.update'), asyncRoute(async (request: AuthRequest, response) => {

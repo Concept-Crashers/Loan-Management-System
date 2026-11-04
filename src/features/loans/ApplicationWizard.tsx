@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, FileText, Info, ShieldCheck, UploadCloud } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Avatar, Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
-import { customers, products } from '../../data/mock-data'
+import type { Customer, LoanProduct } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
 import { mockApi } from '../../lib/services'
 
@@ -23,6 +23,9 @@ const steps = [{ title: 'Borrower', caption: 'Select a customer' }, { title: 'Lo
 export function ApplicationWizard() {
   const [step, setStep] = useState(0)
   const [files, setFiles] = useState<string[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [products, setProducts] = useState<LoanProduct[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { register, watch, trigger, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { customerId: '', product: '', amount: 0, duration: 12, frequency: 'Monthly', purpose: '', income: 0, obligations: 0, termsConfirmed: false } })
   const selectedId = watch('customerId'), selectedProduct = watch('product')
@@ -31,15 +34,21 @@ export function ApplicationWizard() {
   const amount = watch('amount')
   const stepFields: (keyof FormInput)[][] = [['customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
 
+  useEffect(() => {
+    Promise.all([mockApi.listCustomers(), mockApi.listProducts()])
+      .then(([loadedCustomers, loadedProducts]) => { setCustomers(loadedCustomers); setProducts(loadedProducts) })
+      .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Reference data could not be loaded.'))
+  }, [])
+
   async function nextStep() { const valid = await trigger(stepFields[step]); if (valid) setStep((value) => Math.min(3, value + 1)) }
   async function submit(values: FormValues) {
-    const selectedBorrower = customers.find((person) => person.id === values.customerId)
-    const record = await mockApi.submitApplication({ customer: selectedBorrower?.name, customerId: values.customerId, product: product?.name, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
+    if (!product) throw new Error('Choose an active loan product.')
+    const record = await mockApi.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
     toast.success('Application submitted to the demo review queue', { description: `Reference ${record.id} · server decision pending` })
     navigate(`/applications/${record.id}`)
   }
 
-  return <div className="form-page"><div className="page-heading"><div><div className="eyebrow"><Link to="/applications"><ChevronLeft size={14} /> APPLICATIONS</Link><span className="eyebrow-separator">/</span> NEW REQUEST</div><h1>New loan application</h1><p>Capture a request clearly before assessment begins.</p></div><span className="draft-status"><span /> Draft</span></div>
+  return <div className="form-page"><div className="page-heading"><div><div className="eyebrow"><Link to="/applications"><ChevronLeft size={14} /> APPLICATIONS</Link><span className="eyebrow-separator">/</span> NEW REQUEST</div><h1>New loan application</h1><p>Capture a request clearly before assessment begins.</p></div><span className="draft-status"><span /> Draft</span></div>{loadError && <div className="form-error" role="alert">{loadError}</div>}
     <Card className="wizard-card"><div className="wizard-steps">{steps.map((item, index) => <div key={item.title} className={`wizard-step ${index === step ? 'wizard-step-current' : ''} ${index < step ? 'wizard-step-done' : ''}`}><span className="wizard-step-circle">{index < step ? <Check size={15} /> : `0${index + 1}`}</span><span><strong>{item.title}</strong><small>{item.caption}</small></span>{index < steps.length - 1 && <span className="wizard-step-line" />}</div>)}</div>
       <form onSubmit={handleSubmit(submit)} className="wizard-content">
         {step === 0 && <div className="wizard-panel"><div className="wizard-panel-head"><span className="step-icon"><Avatar name="LF" /></span><div><h2>Choose a borrower and product</h2><p>Applications are linked to an existing customer record.</p></div></div><div className="form-grid"><Field label="Customer" required error={errors.customerId?.message}><Select {...register('customerId')}><option value="">Search and select a customer</option>{customers.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.id}</option>)}</Select></Field><Field label="Loan product" required error={errors.product?.message}><Select {...register('product')}><option value="">Choose a configured product</option>{products.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field></div>{borrower && <div className="selected-customer"><Avatar name={borrower.name} /><div><strong>{borrower.name}</strong><span>{borrower.id} <i>·</i> {borrower.phone}</span></div><span className="selected-customer-location">{borrower.district}</span></div>}{product && <div className="product-selection-note"><Info size={15} /><span><strong>{product.name}</strong> · {formatUGX(product.minAmount)}–{formatUGX(product.maxAmount)} · {product.duration} months · rate/terms per configured product</span></div>}</div>}

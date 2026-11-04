@@ -11,6 +11,7 @@ import type { PageColumn, PageDefinition } from '../app/page-registry'
 import { Avatar, Button, Card, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
+import { api } from '../lib/services'
 
 function displayValue(row: TableRow, column: PageColumn) {
   const value = row[column.key]
@@ -66,10 +67,12 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(2026, 10, 1))
   const [sort, setSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+  const [remoteRows, setRemoteRows] = useState<TableRow[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const role = useSelector((state: RootState) => state.session.role)
   const canReview = ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role)
   const navigate = useNavigate()
-  const allRows = definition.getRows()
+  const allRows = remoteRows ?? definition.getRows()
   const filterKey = definition.filterKey
   const filterOptions = definition.filterOptions ?? (filterKey ? [...new Set(allRows.map((row) => String(row[filterKey] ?? '')).filter(Boolean))] : [])
   const filteredRows = useMemo(() => {
@@ -95,6 +98,30 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
   }, [page, pageCount])
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (path === '/customers') {
+          const rows = await api.listCustomers()
+          setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })))
+        } else if (path === '/products') {
+          const rows = await api.listProducts()
+          setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, range: `${formatUGX(item.minAmount)} – ${formatUGX(item.maxAmount)}`, rate: `${item.interestRate}%`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })))
+        } else if (path === '/applications' || path === '/approvals') {
+          const rows = await api.listApplications()
+          const visible = path === '/approvals' ? rows.filter((item) => ['Submitted', 'Under Review', 'Additional Information Required'].includes(item.status)) : rows
+          setRemoteRows(visible.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, product: item.product, amount: item.amount, duration: `${item.duration} months`, officer: item.officer, submitted: item.submitted, status: item.status })))
+        } else if (path === '/loans') {
+          const rows = await api.listLoans()
+          setRemoteRows(rows.map((item) => ({ ref: item.ref, customer: item.customer, customerId: item.customerId, product: item.product, principal: item.principal, outstanding: item.outstanding, nextDue: item.nextDue, status: item.status })))
+        }
+      } catch (error: unknown) {
+        setLoadError(error instanceof Error ? error.message : 'Records could not be loaded.')
+      }
+    }
+    void load()
+  }, [path])
 
   function openRow(row: TableRow) {
     const key = definition.detailKey ? row[definition.detailKey] : undefined
@@ -135,7 +162,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         ? <span className="role-notice">Viewing as <strong>{role}</strong></span>
         : null
 
-  return <div className="operational-page">
+  return <div className="operational-page">{loadError && <div className="form-error" role="alert">{loadError}</div>}
     <div className="page-heading"><div><div className="eyebrow">LENDING OPERATIONS <span className="eyebrow-separator">/</span> RECORDS</div><h1>{definition.title}</h1><p>{definition.subtitle}</p></div><div className="heading-actions">{headingAction}</div></div>
     {pageStats && <div className="module-stats-grid">{pageStats.map((stat, index) => { const Icon = kpiIcons[index % kpiIcons.length]; return <Card className="module-stat metric-card" key={stat.label}><div className="metric-top"><span className={`metric-icon ${kpiColors[index % kpiColors.length]}`}><Icon size={17} strokeWidth={1.9} /></span><span className="metric-change metric-change-neutral">Sample data</span></div><span className="metric-label">{stat.label}</span><strong>{stat.value}</strong><small>{stat.helper}</small></Card> })}</div>}
     {path === '/approvals' && <div className="info-callout"><span className="callout-icon">i</span><span>Application decisions should be recorded by an authorized approver. This prototype shows the workflow only; the backend must validate permissions and preserve the audit trail.</span><Link to="/staff">Manage roles</Link></div>}

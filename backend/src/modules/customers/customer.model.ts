@@ -22,4 +22,6 @@ const customerSchema = new Schema({
 
 customerSchema.index({ tenantId: 1, branchId: 1, customerNumber: 1 }, { unique: true })
 customerSchema.index({ tenantId: 1, phone: 1 })
+customerSchema.index({ tenantId: 1, branchId: 1, status: 1, createdAt: -1 })
+customerSchema.index({ tenantId: 1, branchId: 1, name: 1 })
 export const CustomerModel = model('Customer', customerSchema)

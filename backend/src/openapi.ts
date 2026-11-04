@@ -1,0 +1,32 @@
+export const openApiDocument = {
+  openapi: '3.0.3',
+  info: { title: 'LendFlow API', version: '0.1.0', description: 'Uganda loan management API. Financial amounts are integer minor units.' },
+  servers: [{ url: '/api/v1' }],
+  components: {
+    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+    schemas: {
+      Error: { type: 'object', required: ['success', 'message', 'code'], properties: { success: { type: 'boolean' }, message: { type: 'string' }, code: { type: 'string' }, errors: { type: 'array' } } },
+      Money: { type: 'integer', format: 'int64', description: 'Integer minor units; never a floating-point amount.' },
+      Customer: { type: 'object', required: ['branchId', 'name', 'phone'], properties: { branchId: { type: 'string' }, name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, kycStatus: { type: 'string' } } },
+      Payment: { type: 'object', required: ['loanAccountId', 'reference', 'amountMinor', 'method'], properties: { loanAccountId: { type: 'string' }, reference: { type: 'string' }, amountMinor: { $ref: '#/components/schemas/Money' }, method: { type: 'string' }, status: { type: 'string' } } },
+    },
+  },
+  paths: {
+    '/auth/login': { post: { summary: 'Sign in staff member', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email' }, password: { type: 'string', format: 'password' } } } } } }, responses: { '200': { description: 'Authenticated' }, '401': { description: 'Invalid credentials', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } } } } },
+    '/auth/refresh': { post: { summary: 'Rotate refresh token' } },
+    '/customers': { get: { summary: 'List branch-scoped customers', security: [{ bearerAuth: [] }] }, post: { summary: 'Create customer', security: [{ bearerAuth: [] }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Customer' } } } }, responses: { '201': { description: 'Created' } } } },
+    '/loan-products': { get: { summary: 'List versioned products' }, post: { summary: 'Create product version' } },
+    '/applications': { get: { summary: 'List applications' }, post: { summary: 'Submit application' } },
+    '/applications/{id}/decision': { post: { summary: 'Approve or reject application' } },
+    '/finance/payments': { post: { summary: 'Capture payment pending verification', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Payment' } } } } } },
+    '/finance/payments/{id}/confirm': { post: { summary: 'Confirm and allocate payment' } },
+    '/finance/payments/{id}/reverse': { post: { summary: 'Create authorized reversal' } },
+    '/reconciliation': { post: { summary: 'Record reconciliation' } },
+    '/documents/upload-signature': { post: { summary: 'Create Cloudinary signed upload parameters' } },
+    '/sync/register-device': { post: { summary: 'Register an authorized offline device' } },
+    '/sync/revoke-device': { post: { summary: 'Revoke an offline device' } },
+    '/sync/push': { post: { summary: 'Push idempotent offline operations' } },
+    '/sync/pull': { get: { summary: 'Pull accepted changes by cursor' } },
+    '/notifications': { get: { summary: 'List in-app notifications' } },
+  },
+} as const

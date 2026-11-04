@@ -14,4 +14,5 @@ const auditSchema = new Schema({
 }, { timestamps: true, strict: true })
 
 auditSchema.index({ tenantId: 1, createdAt: -1 })
+auditSchema.index({ tenantId: 1, entityType: 1, entityId: 1, createdAt: -1 })
 export const AuditModel = model('AuditEvent', auditSchema)

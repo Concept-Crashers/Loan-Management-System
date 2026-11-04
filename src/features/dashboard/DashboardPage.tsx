@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight, Banknote, CalendarClock, ChevronRight, CircleAlert, TrendingUp, Users, Wallet, ArrowRight, FilePlus2, ContactRound, ReceiptText, ListFilter } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, Button, StatusBadge, Select } from '../../components/ui/primitives'
 import { applications, loans, repayments, schedules } from '../../data/mock-data'
 import { formatDate, formatUGX } from '../../lib/format'
+import { api } from '../../lib/services'
 
 const trendData = [
   { month: 'May', disbursed: 18.2, repayments: 11.4 }, { month: 'Jun', disbursed: 21.8, repayments: 14.7 },
@@ -23,22 +24,27 @@ function MetricCard({ label, value, change, icon: Icon, color, hint }: { label: 
 
 export function DashboardPage() {
   const [period, setPeriod] = useState('Last 7 months')
+  const [dashboard, setDashboard] = useState<{ activeLoans: number; confirmedRepaymentsMinor: number; overdueLoans: number } | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  useEffect(() => {
+    api.dashboardSummary().then(setDashboard).catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Dashboard data could not be loaded.'))
+  }, [])
   const totalOutstanding = loans.reduce((sum, loan) => sum + loan.outstanding, 0)
   const monthlyRepayments = repayments.reduce((sum, payment) => sum + payment.amount, 0)
-  const overdueCount = loans.filter((loan) => loan.status === 'Overdue').length
-  const activeCount = loans.filter((loan) => loan.status === 'Active').length
+  const overdueCount = dashboard?.overdueLoans ?? loans.filter((loan) => loan.status === 'Overdue').length
+  const activeCount = dashboard?.activeLoans ?? loans.filter((loan) => loan.status === 'Active').length
   const pendingApplicationCount = applications.filter((item) => ['Submitted', 'Under Review', 'Additional Information Required'].includes(item.status)).length
   const recentTransactions = repayments.slice(0, 4)
   const upcoming = schedules.filter((item) => item.status !== 'Paid').slice(0, 4)
 
-  return <div className="dashboard-page">
+  return <div className="dashboard-page">{loadError && <div className="form-error" role="alert">{loadError}</div>}
     <div className="page-heading dashboard-heading"><div><div className="eyebrow"><span className="live-spark" /> WEDNESDAY, 4 NOVEMBER 2026</div><h1>Good morning, Sarah <span className="wave">✳</span></h1><p>Here’s what’s happening with your loan portfolio today.</p></div><div className="heading-actions"><span className="refresh-note"><span className="online-dot" /> Live demo data</span><Button variant="outline" icon={ListFilter} onClick={() => window.print()}>Export overview</Button></div></div>
     <section className="welcome-banner"><div><span className="welcome-banner-kicker">LEND FLOW WORKSPACE</span><h2>Keep every lending decision clear and connected.</h2><p>Review portfolio movement, follow up on overdue accounts and keep borrower relationships moving forward.</p></div><Link to="/applications/new" className="welcome-banner-action">Start an application <ArrowRight size={15} /></Link></section>
     <div className="metrics-grid">
       <MetricCard label="Total customers" value="2,104" change="8.4%" icon={Users} color="blue" hint="vs. last month · sample metric" />
       <MetricCard label="Total disbursed" value={formatUGX(246_800_000, true)} change="12.8%" icon={ArrowDownLeft} color="green" hint="vs. last month" />
       <MetricCard label="Outstanding balance" value={formatUGX(totalOutstanding, true)} change="4.2%" icon={Wallet} color="violet" hint="across active loans" />
-      <MetricCard label="Repayments collected" value={formatUGX(monthlyRepayments, true)} change="6.1%" icon={Banknote} color="amber" hint="this month · demo data" />
+      <MetricCard label="Repayments collected" value={formatUGX(dashboard ? dashboard.confirmedRepaymentsMinor / 100 : monthlyRepayments, true)} change="Server total" icon={Banknote} color="amber" hint={dashboard ? 'confirmed by the API' : 'loading server total'} />
     </div>
     <div className="dashboard-secondary-stats"><Card className="secondary-stat-card"><span className="secondary-stat-icon blue"><TrendingUp size={15} /></span><span><small>Total loans issued</small><strong>{loans.length}</strong><em>sample loan records</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon violet"><FilePlus2 size={15} /></span><span><small>Pending applications</small><strong>{pendingApplicationCount}</strong><em>awaiting review</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon green"><Users size={15} /></span><span><small>Active loans</small><strong>{activeCount}</strong><em>demo accounts</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon amber"><CircleAlert size={15} /></span><span><small>Overdue loans</small><strong>{overdueCount}</strong><em>needs follow-up</em></span></Card></div>
     <div className="alert-strip"><span className="alert-icon"><CircleAlert size={16} /></span><span><strong>{overdueCount} loan needs attention.</strong> Review overdue installments and upcoming follow-ups.</span><Link to="/collections">Open collections <ArrowRight size={14} /></Link></div>

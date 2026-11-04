@@ -59,6 +59,8 @@ export interface Application {
 
 export interface LoanAccount {
   ref: string
+  applicationId?: string
+  branchId?: string
   customer: string
   customerId: string
   product: string
