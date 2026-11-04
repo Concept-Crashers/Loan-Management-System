@@ -1,0 +1,17 @@
+
+
+.dashboard-secondary-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.secondary-stat-card { min-height: 55px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.secondary-stat-icon { width: 26px; height: 26px; display: grid; flex-shrink: 0; place-items: center; border-radius: 7px; color: #3d70bf; background: #edf4ff; }
+.secondary-stat-icon.green { color: #25866b; background: #eaf7f1; }.secondary-stat-icon.violet { color: #746abe; background: #f0effb; }.secondary-stat-icon.amber { color: #b77a2e; background: #fff5e6; }
+.secondary-stat-card > span:last-child { min-width: 0; display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 1px 6px; flex: 1; }
+.secondary-stat-card small { overflow: hidden; color: #8997a9; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.secondary-stat-card strong { color: #394e69; font-size: 13px; font-weight: 650; }
+.secondary-stat-card em { grid-column: 1 / -1; color: #a0aab6; font-size: 7px; font-style: normal; }
+.portfolio-status-breakdown { margin-top: 10px; padding-top: 8px; border-top: 1px solid #eef1f5; }
+.portfolio-status-breakdown > span { display: block; margin-bottom: 6px; color: #91a0b1; font-size: 8px; }
+.portfolio-status-breakdown > div { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.portfolio-status-breakdown .lf-badge { min-height: 17px; padding: 2px 5px; font-size: 7px; }
+.portfolio-status-breakdown > div > strong { margin-right: 5px; color: #64758c; font-size: 8px; font-weight: 600; }
+@media (max-width: 1100px) { .dashboard-secondary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 390px) { .dashboard-secondary-stats { gap: 6px; } .secondary-stat-card { gap: 6px; padding: 7px; } .secondary-stat-card small { font-size: 7px; } }
