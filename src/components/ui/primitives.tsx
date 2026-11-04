@@ -1,6 +1,6 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Check, CircleAlert, Clock3, type LucideIcon } from 'lucide-react'
+import { Check, CircleAlert, Clock3, LoaderCircle, type LucideIcon } from 'lucide-react'
 import { cn } from './utils'
 
 const buttonStyles = cva('lf-button', {
@@ -13,9 +13,9 @@ const buttonStyles = cva('lf-button', {
   defaultVariants: { variant: 'primary', size: 'default' },
 })
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonStyles> { icon?: LucideIcon }
-export function Button({ className, variant, size, icon: Icon, children, ...props }: ButtonProps) {
-  return <button className={cn(buttonStyles({ variant, size }), className)} {...props}>{Icon && <Icon size={16} strokeWidth={1.8} />}{children}</button>
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonStyles> { icon?: LucideIcon; loading?: boolean }
+export function Button({ className, variant, size, icon: Icon, loading = false, disabled, children, ...props }: ButtonProps) {
+  return <button className={cn(buttonStyles({ variant, size }), className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>{loading ? <LoaderCircle className="button-spinner" size={16} strokeWidth={1.8} /> : Icon && <Icon size={16} strokeWidth={1.8} />}{children}</button>
 }
 
 export function Card({ children, className = '', ...props }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
