@@ -7,16 +7,8 @@ import { applications, loans, repayments, schedules } from '../../data/empty-dat
 import { formatDate, formatUGX } from '../../lib/format'
 import { api } from '../../lib/services'
 
-const trendData = [
-  { month: 'May', disbursed: 18.2, repayments: 11.4 }, { month: 'Jun', disbursed: 21.8, repayments: 14.7 },
-  { month: 'Jul', disbursed: 17.1, repayments: 13.5 }, { month: 'Aug', disbursed: 28.7, repayments: 19.2 },
-  { month: 'Sep', disbursed: 25.4, repayments: 17.8 }, { month: 'Oct', disbursed: 33.6, repayments: 23.7 },
-  { month: 'Nov', disbursed: 29.5, repayments: 21.4 },
-]
-const portfolioData = [
-  { name: 'Business Growth', value: 48, color: '#2563eb' }, { name: 'Salary Advance', value: 26, color: '#39aa88' },
-  { name: 'Emergency Assist', value: 16, color: '#f6aa4d' }, { name: 'Group Enterprise', value: 10, color: '#aaa4f4' },
-]
+const trendData: Array<{ month: string; disbursed: number; repayments: number }> = []
+const portfolioData: Array<{ name: string; value: number; color: string }> = []
 
 function MetricCard({ label, value, change, icon: Icon, color, hint }: { label: string; value: string; change: string; icon: typeof Users; color: string; hint: string }) {
   return <Card className="metric-card"><div className="metric-top"><span className={`metric-icon ${color}`}><Icon size={18} strokeWidth={1.9} /></span><span className="metric-change"><ArrowUpRight size={13} /> {change}</span></div><p className="metric-label">{label}</p><div className="metric-value">{value}</div><span className="metric-hint">{hint}</span></Card>
@@ -41,12 +33,12 @@ export function DashboardPage() {
     <div className="page-heading dashboard-heading"><div><div className="eyebrow"><span className="live-spark" /> WEDNESDAY, 4 NOVEMBER 2026</div><h1>Good morning, Sarah <span className="wave">✳</span></h1><p>Here’s what’s happening with your loan portfolio today.</p></div><div className="heading-actions"><span className="refresh-note"><span className="online-dot" /> Live demo data</span><Button variant="outline" icon={ListFilter} onClick={() => window.print()}>Export overview</Button></div></div>
     <section className="welcome-banner"><div><span className="welcome-banner-kicker">LEND FLOW WORKSPACE</span><h2>Keep every lending decision clear and connected.</h2><p>Review portfolio movement, follow up on overdue accounts and keep borrower relationships moving forward.</p></div><Link to="/applications/new" className="welcome-banner-action">Start an application <ArrowRight size={15} /></Link></section>
     <div className="metrics-grid">
-      <MetricCard label="Total customers" value="2,104" change="8.4%" icon={Users} color="blue" hint="vs. last month · sample metric" />
-      <MetricCard label="Total disbursed" value={formatUGX(246_800_000, true)} change="12.8%" icon={ArrowDownLeft} color="green" hint="vs. last month" />
+      <MetricCard label="Total customers" value="—" change="API" icon={Users} color="blue" hint="Awaiting server data" />
+      <MetricCard label="Total disbursed" value="—" change="API" icon={ArrowDownLeft} color="green" hint="Awaiting server data" />
       <MetricCard label="Outstanding balance" value={formatUGX(totalOutstanding, true)} change="4.2%" icon={Wallet} color="violet" hint="across active loans" />
       <MetricCard label="Repayments collected" value={formatUGX(dashboard ? dashboard.confirmedRepaymentsMinor / 100 : monthlyRepayments, true)} change="Server total" icon={Banknote} color="amber" hint={dashboard ? 'confirmed by the API' : 'loading server total'} />
     </div>
-    <div className="dashboard-secondary-stats"><Card className="secondary-stat-card"><span className="secondary-stat-icon blue"><TrendingUp size={15} /></span><span><small>Total loans issued</small><strong>{loans.length}</strong><em>sample loan records</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon violet"><FilePlus2 size={15} /></span><span><small>Pending applications</small><strong>{pendingApplicationCount}</strong><em>awaiting review</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon green"><Users size={15} /></span><span><small>Active loans</small><strong>{activeCount}</strong><em>demo accounts</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon amber"><CircleAlert size={15} /></span><span><small>Overdue loans</small><strong>{overdueCount}</strong><em>needs follow-up</em></span></Card></div>
+    <div className="dashboard-secondary-stats"><Card className="secondary-stat-card"><span className="secondary-stat-icon blue"><TrendingUp size={15} /></span><span><small>Total loans issued</small><strong>{loans.length}</strong><em>from the lending service</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon violet"><FilePlus2 size={15} /></span><span><small>Pending applications</small><strong>{pendingApplicationCount}</strong><em>awaiting review</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon green"><Users size={15} /></span><span><small>Active loans</small><strong>{activeCount}</strong><em>from the lending service</em></span></Card><Card className="secondary-stat-card"><span className="secondary-stat-icon amber"><CircleAlert size={15} /></span><span><small>Overdue loans</small><strong>{overdueCount}</strong><em>needs follow-up</em></span></Card></div>
     <div className="alert-strip"><span className="alert-icon"><CircleAlert size={16} /></span><span><strong>{overdueCount} loan needs attention.</strong> Review overdue installments and upcoming follow-ups.</span><Link to="/collections">Open collections <ArrowRight size={14} /></Link></div>
 
     <section className="dashboard-charts-grid">

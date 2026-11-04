@@ -38,18 +38,18 @@ export function RecordDetailPage() {
 
   async function decision(kind: 'approve' | 'reject' | 'request' | 'return') {
     if (!application) return
-    if (!canReview) { toast.error('This demo role cannot decide applications.', { description: 'Only an authorized approver role can submit a decision to the backend.' }); return }
+    if (!canReview) { toast.error('You do not have permission to decide applications.', { description: 'Only an authorized approver role can submit a decision to the backend.' }); return }
     const result = await Swal.fire({
       title: kind === 'approve' ? 'Approve application?' : kind === 'reject' ? 'Reject application?' : kind === 'request' ? 'Request more information?' : 'Return for review?',
-      text: 'This confirmation demonstrates the workflow only. The backend must enforce permissions, validate terms and retain a decision audit trail.',
+      text: 'The backend validates permissions, terms and the decision audit trail before applying this action.',
       input: 'textarea', inputLabel: 'Decision notes', inputPlaceholder: 'Add clear notes for the audit history…',
       icon: kind === 'reject' ? 'warning' : 'question', showCancelButton: true,
-      confirmButtonText: 'Confirm demo action', confirmButtonColor: kind === 'reject' ? '#b84b4b' : '#2563eb',
+      confirmButtonText: 'Confirm action', confirmButtonColor: kind === 'reject' ? '#b84b4b' : '#2563eb',
     })
     if (!result.isConfirmed) return
     const nextStatus = kind === 'approve' ? 'Approved' : kind === 'reject' ? 'Rejected' : kind === 'request' ? 'Additional Information Required' : 'Under Review'
     application.status = nextStatus
-    toast.success(`Demo status updated to ${nextStatus}`, { description: 'This local status is not an approval or a financial record.' })
+    toast.success(`Application status updated to ${nextStatus}`)
   }
 
   if (!customer && !application && !loan && !repayment && !product) return <div className="not-found-card"><span><FileText size={22} /></span><h1>Record not found</h1><p>This reference is not present in the local demo dataset.</p><Button variant="outline" onClick={() => navigate(-1)}>Go back</Button></div>

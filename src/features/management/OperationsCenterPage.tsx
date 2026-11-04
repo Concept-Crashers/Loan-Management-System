@@ -6,12 +6,7 @@ import { Button, Card, Select, StatusBadge } from '../../components/ui/primitive
 
 type ActivityRecord = { id: string; title: string; detail: string; actor: string; time: string; tone: 'success' | 'warning' | 'info' }
 
-const activityRecords: ActivityRecord[] = [
-  { id: 'ACT-001', title: 'Application submitted', detail: 'APP-2026-0314 · Anita Namusoke', actor: 'Sarah Kiconko', time: '18 minutes ago', tone: 'info' },
-  { id: 'ACT-002', title: 'Repayment recorded', detail: 'RCT-2026-0842 · UGX 450,000', actor: 'Paul Wekesa', time: '42 minutes ago', tone: 'success' },
-  { id: 'ACT-003', title: 'Approval decision requested', detail: 'APP-2026-0312 · Business Growth', actor: 'Moses Okello', time: '1 hour ago', tone: 'warning' },
-  { id: 'ACT-004', title: 'Customer profile updated', detail: 'CUS-2048 · Contact details changed', actor: 'Sarah Kiconko', time: 'Yesterday', tone: 'info' },
-]
+const activityRecords: ActivityRecord[] = []
 
 export function OperationsCenterPage({ initialTab = 'documents' }: { initialTab?: 'documents' | 'imports' | 'activity' }) {
   const [tab, setTab] = useState(initialTab)

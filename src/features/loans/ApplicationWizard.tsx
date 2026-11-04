@@ -44,7 +44,7 @@ export function ApplicationWizard() {
   async function submit(values: FormValues) {
     if (!product) throw new Error('Choose an active loan product.')
     const record = await mockApi.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
-    toast.success('Application submitted to the demo review queue', { description: `Reference ${record.id} · server decision pending` })
+    toast.success('Application submitted for review', { description: `Reference ${record.id} · server decision pending` })
     navigate(`/applications/${record.id}`)
   }
 
