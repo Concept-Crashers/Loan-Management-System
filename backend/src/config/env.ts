@@ -32,6 +32,15 @@ const schema = z.object({
   if (value.SMS_PROVIDER === 'twilio' && (!value.TWILIO_ACCOUNT_SID || !value.TWILIO_AUTH_TOKEN || !value.TWILIO_FROM_NUMBER)) {
     context.addIssue({ code: 'custom', path: ['SMS_PROVIDER'], message: 'Twilio provider requires account SID, auth token and from number.' })
   }
+  if (value.NODE_ENV === 'production' && !value.MONGODB_REQUIRE_REPLICA_SET) {
+    context.addIssue({ code: 'custom', path: ['MONGODB_REQUIRE_REPLICA_SET'], message: 'Production requires MongoDB replica-set transaction checks.' })
+  }
+  if (value.NODE_ENV === 'production' && !value.FRONTEND_ORIGIN.startsWith('https://')) {
+    context.addIssue({ code: 'custom', path: ['FRONTEND_ORIGIN'], message: 'Production frontend origin must use HTTPS.' })
+  }
+  if (value.NODE_ENV === 'production' && (value.JWT_ACCESS_SECRET.startsWith('replace-') || value.JWT_REFRESH_SECRET.startsWith('replace-'))) {
+    context.addIssue({ code: 'custom', path: ['JWT_ACCESS_SECRET'], message: 'Production JWT secrets must be replaced with random values.' })
+  }
 })
 
 export const env = schema.parse(process.env)
