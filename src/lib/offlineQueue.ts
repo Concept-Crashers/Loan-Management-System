@@ -31,6 +31,10 @@ export async function queueOfflineOperation(operation: OfflineOperation) {
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error ?? new Error('Offline operation could not be queued.'))
   })
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    const registration = await navigator.serviceWorker.ready
+    await (registration as ServiceWorkerRegistration & { sync: { register(tag: string): Promise<void> } }).sync.register('lendflow-sync')
+  }
 }
 
 export async function flushOfflineOperations() {

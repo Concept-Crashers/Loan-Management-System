@@ -21,9 +21,9 @@ async function refreshAccessToken() {
     refreshPromise = fetch(`${API_BASE_URL}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' })
       .then(async (response) => {
         if (!response.ok) return false
-        const body = await response.json() as ApiEnvelope<{ accessToken: string }>
+        const body = await response.json() as ApiEnvelope<{ accessToken: string; user?: AuthUser }>
         setAccessToken(body.data.accessToken)
-        authenticatedUser = (body.data as { user?: AuthUser }).user ?? authenticatedUser
+        authenticatedUser = body.data.user ?? authenticatedUser
         return true
       })
       .catch(() => false)
@@ -43,8 +43,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, canRef
   return body.data
 }
 
-export async function login(email: string, password: string, mfaCode?: string) {
-  const data = await apiRequest<{ accessToken: string; user: AuthUser }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password, mfaCode }) }, false)
+export async function login(email: string, password: string) {
+  const data = await apiRequest<{ accessToken: string; user: AuthUser }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, false)
   setAccessToken(data.accessToken)
   authenticatedUser = data.user
   return data.user
@@ -64,6 +64,19 @@ export function enableMfa(code: string) {
 
 export function disableMfa(code: string) {
   return apiRequest<null>('/api/v1/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ code }) })
+}
+
+export interface OrganisationSettings {
+  organisation: { name: string; legalName?: string; registrationNumber?: string; address?: string; phone?: string; email?: string }
+  branding: { logoUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string }
+}
+
+export function getOrganisationSettings() {
+  return apiRequest<OrganisationSettings>('/api/v1/organisation/settings')
+}
+
+export function saveOrganisationSettings(settings: OrganisationSettings) {
+  return apiRequest<OrganisationSettings>('/api/v1/organisation/settings', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
 export async function restoreSession() {

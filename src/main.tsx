@@ -7,6 +7,7 @@ import 'sweetalert2/dist/sweetalert2.min.css'
 import './styles/global.css'
 import { App } from './app/App'
 import { AppProviders } from './app/providers'
+import { flushOfflineOperations } from './lib/offlineQueue'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -20,5 +21,19 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => { void navigator.serviceWorker.register('/sw.js') })
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').then((registration) => {
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent('lendflow:pwa-update'))
+          }
+        })
+      })
+    })
+  })
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'lendflow:sync') void flushOfflineOperations()
+  })
 }

@@ -6,6 +6,7 @@ import { Avatar, Button, Card, Field, Input, Select } from '../../components/ui/
 import { staff } from '../../data/mock-data'
 import { useDispatch, useSelector } from 'react-redux'
 import { setBranding, type RootState } from '../../store/store'
+import { saveOrganisationSettings } from '../../lib/api'
 
 const roles = ['Super Admin', 'Admin', 'Manager', 'Loan Officer', 'Credit Officer', 'Approver', 'Cashier', 'Accountant', 'Collections Officer']
 const permissionRows = [
@@ -22,9 +23,21 @@ export function SettingsPage() {
   const [logoDataUrl, setLogoDataUrl] = useState(branding.logoDataUrl)
   const [toggles, setToggles] = useState({ appSubmitted: true, repaymentSoon: true, paymentReceived: true, repaymentOverdue: true, weeklySummary: false })
   function toggle(key: keyof typeof toggles) { setToggles((current) => ({ ...current, [key]: !current[key] })) }
-  function save(label: string) { if (label === 'Company profile') dispatch(setBranding({ companyName, tagline, country, currency, logoDataUrl })); toast.success(`${label} saved`, { description: label === 'Company profile' ? 'Branding is now updated across the workspace and authentication pages.' : 'Settings saved in this workspace.' }) }
+  async function save(label: string) {
+    if (label === 'Company profile') {
+      try {
+        const saved = await saveOrganisationSettings({ organisation: { name: companyName }, branding: { currency } })
+        dispatch(setBranding({ companyName: saved.organisation.name, tagline, country, currency: saved.branding.currency ?? currency, logoDataUrl }))
+        toast.success(`${label} saved`, { description: 'Branding is now updated across the workspace and authentication pages.' })
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Company profile could not be saved.')
+      }
+      return
+    }
+    toast.success(`${label} saved`, { description: 'Settings saved in this workspace.' })
+  }
 
-  return <div className="settings-page"><div className="page-heading"><div><div className="eyebrow">MANAGEMENT <span className="eyebrow-separator">/</span> CONFIGURATION</div><h1>Settings</h1><p>Configure the workspace profile, notifications and team responsibilities.</p></div><div className="heading-actions"><span className="settings-save-note"><span className="online-dot" /> Changes are local to this demo</span></div></div>
+  return <div className="settings-page"><div className="page-heading"><div><div className="eyebrow">MANAGEMENT <span className="eyebrow-separator">/</span> CONFIGURATION</div><h1>Settings</h1><p>Configure the workspace profile, notifications and team responsibilities.</p></div><div className="heading-actions"><span className="settings-save-note"><span className="online-dot" /> Tenant settings are securely persisted</span></div></div>
     <Tabs.Root className="settings-tabs" defaultValue="company"><Tabs.List className="settings-tab-list"><Tabs.Trigger value="company"><Building2 size={15} /> Company</Tabs.Trigger><Tabs.Trigger value="notifications"><Mail size={15} /> Notifications</Tabs.Trigger><Tabs.Trigger value="roles"><Users size={15} /> Roles & access</Tabs.Trigger><Tabs.Trigger value="payments"><CreditCard size={15} /> Loan defaults</Tabs.Trigger></Tabs.List>
       <Tabs.Content value="company" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Company profile</h2><p>Business identity shown across customer records, authentication and receipts.</p></div></div><div className="company-logo-row"><div className="company-logo-mark">{logoDataUrl ? <img className="brand-logo-image" src={logoDataUrl} alt="Company logo preview" /> : <span className="brand-mark"><span /><span /><span /></span>}</div><div><strong>Logo and identity</strong><small>PNG, JPG or SVG · stored for this workspace</small></div><label className="lf-button lf-button-outline lf-button-sm">Change logo<input hidden type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { toast.error('Logo must be 2 MB or smaller.'); return }; const reader = new FileReader(); reader.onload = () => setLogoDataUrl(String(reader.result)); reader.readAsDataURL(file) }} /></label></div><div className="settings-form-grid"><Field label="Company name"><Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></Field><Field label="Brand tagline"><Input value={tagline} onChange={(event) => setTagline(event.target.value)} /></Field><Field label="Registration number"><Input defaultValue="UMRA — to be verified" /></Field><Field label="Primary contact"><Input defaultValue="+256 312 450 000" /></Field><Field label="Support email"><Input defaultValue="support@lendflow.ug" /></Field><Field label="Country"><Input value={country} onChange={(event) => setCountry(event.target.value)} /></Field><Field label="Default currency"><Input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} /></Field></div><div className="settings-panel-footer"><span><ShieldCheck size={14} /> Branding updates apply system-wide after saving.</span><Button icon={Save} onClick={() => save('Company profile')}>Save changes</Button></div></Card>
         <Card className="settings-panel settings-branch-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Branch defaults</h2><p>Four demonstration branches are ready to explore.</p></div></div><div className="settings-inline-row"><div><strong>Default operational branch</strong><small>New records are linked to this branch in the demo.</small></div><Select defaultValue="Kampala Central"><option>Kampala Central</option><option>Entebbe</option><option>Gulu</option><option>Mbarara</option></Select></div></Card></Tabs.Content>

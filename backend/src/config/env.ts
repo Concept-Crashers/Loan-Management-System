@@ -25,6 +25,13 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().email().optional(),
+}).superRefine((value, context) => {
+  if (value.EMAIL_PROVIDER === 'smtp' && (!value.SMTP_HOST || !value.SMTP_USER || !value.SMTP_PASSWORD || !value.SMTP_FROM)) {
+    context.addIssue({ code: 'custom', path: ['EMAIL_PROVIDER'], message: 'SMTP provider requires SMTP_HOST, SMTP_USER, SMTP_PASSWORD and SMTP_FROM.' })
+  }
+  if (value.SMS_PROVIDER === 'twilio' && (!value.TWILIO_ACCOUNT_SID || !value.TWILIO_AUTH_TOKEN || !value.TWILIO_FROM_NUMBER)) {
+    context.addIssue({ code: 'custom', path: ['SMS_PROVIDER'], message: 'Twilio provider requires account SID, auth token and from number.' })
+  }
 })
 
 export const env = schema.parse(process.env)

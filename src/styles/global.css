@@ -49,6 +49,9 @@ a { color: inherit; text-decoration: none; }
 .brand-mark span:nth-child(3) { height: 19px; background: #72a8ff; }
 .brand-logo-image { width: 32px; height: 32px; object-fit: contain; border-radius: 9px; }
 .company-logo-mark .brand-logo-image { width: 56px; height: 56px; border-radius: 12px; }
+.offline-dot { background: #d97706; }
+.pwa-update-banner { position: fixed; z-index: 20; top: 14px; left: 50%; transform: translateX(-50%); padding: 9px 14px; border: 1px solid #c9d8f2; border-radius: 10px; background: #fff; color: #17365d; box-shadow: 0 8px 24px #15254420; font-size: 13px; }
+.pwa-update-banner button { margin-left: 8px; border: 0; border-radius: 6px; padding: 4px 8px; background: #17365d; color: #fff; cursor: pointer; }
 .brand-copy { display: flex; flex-direction: column; gap: 2px; }
 .brand-copy strong { color: #233d5d; font-size: 15px; font-weight: 700; letter-spacing: -.45px; line-height: 1; }
 .brand-copy small { color: #9aa6b5; font-size: 7px; font-weight: 650; letter-spacing: 1.2px; }
@@ -137,6 +140,7 @@ a { color: inherit; text-decoration: none; }
 .lf-button-danger { color: #fff; background: #c14949; }
 .lf-button-danger:hover { background: #a93939; }
 .lf-input { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid #e2e8ef; border-radius: 5px; outline: none; color: #4c6079; background: #fff; font-size: 9px; transition: border-color .15s ease, box-shadow .15s ease; }
+.lf-input-icon-wrap, .lf-password-wrap { position: relative; display: block; width: 100%; }.lf-input-leading-icon { position: absolute; z-index: 1; top: 50%; left: 10px; transform: translateY(-50%); color: #8ca0b6; pointer-events: none; }.lf-input-with-icon { padding-left: 32px; }.lf-input-with-toggle { padding-right: 36px; }.lf-input-toggle { position: absolute; top: 50%; right: 7px; display: grid; place-items: center; padding: 4px; border: 0; transform: translateY(-50%); color: #7890aa; background: transparent; cursor: pointer; }.lf-input-toggle:hover, .lf-input-toggle:focus-visible { color: #3173ca; }
 .lf-input:focus { border-color: #80a6df; box-shadow: 0 0 0 3px rgb(54 119 210 / 9%); }
 .lf-input::placeholder { color: #b1bac5; }
 .lf-textarea { min-height: 74px; resize: vertical; }

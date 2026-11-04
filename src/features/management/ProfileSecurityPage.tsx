@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Check, KeyRound, LockKeyhole, MonitorSmartphone, Save, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Button, Card, Field, Input, Select } from '../../components/ui/primitives'
+import { Button, Card, Field, IconInput, Input, PasswordInput, Select } from '../../components/ui/primitives'
 import { disableMfa, enableMfa, startMfaEnrollment } from '../../lib/api'
 
 export function ProfileSecurityPage() {
@@ -55,13 +55,13 @@ export function ProfileSecurityPage() {
     <div className="settings-tab-content profile-security-grid">
       <Card className="settings-panel">
         <div className="settings-panel-header"><div className="settings-panel-icon"><ShieldCheck size={18} /></div><div><h2>Personal details</h2><p>Information shown to colleagues and on activity records.</p></div></div>
-        <div className="settings-form-grid"><Field label="Full name"><Input defaultValue="Sarah Kiconco" /></Field><Field label="Work email"><Input type="email" defaultValue="sarah.kiconco@lendflow.ug" /></Field><Field label="Phone number"><Input defaultValue="+256 772 123 456" /></Field><Field label="Role"><Select defaultValue="Manager" disabled><option>Manager</option></Select></Field></div>
+        <div className="settings-form-grid"><Field label="Full name"><Input defaultValue="Sarah Kiconco" /></Field><Field label="Work email"><IconInput icon={ShieldCheck} type="email" defaultValue="sarah.kiconco@lendflow.ug" /></Field><Field label="Phone number"><Input defaultValue="+256 772 123 456" /></Field><Field label="Role"><Select defaultValue="Manager" disabled><option>Manager</option></Select></Field></div>
         <div className="settings-panel-footer"><span>Last updated today</span><Button icon={Save} onClick={() => save('Personal details')}>Save changes</Button></div>
       </Card>
 
       <Card className="settings-panel">
         <div className="settings-panel-header"><div className="settings-panel-icon"><KeyRound size={18} /></div><div><h2>Password & MFA</h2><p>Use a second factor to protect sensitive borrower and financial data.</p></div></div>
-        <div className="settings-form-grid"><Field label="Current password"><Input type="password" placeholder="Enter current password" /></Field><Field label="New password"><Input type="password" placeholder="At least 12 characters" /></Field><Field label="Confirm new password"><Input type="password" placeholder="Repeat new password" /></Field></div>
+        <div className="settings-form-grid"><Field label="Current password"><PasswordInput placeholder="Enter current password" /></Field><Field label="New password"><PasswordInput placeholder="At least 12 characters" /></Field><Field label="Confirm new password"><PasswordInput placeholder="Repeat new password" /></Field></div>
         <div className="security-toggle-row"><span className="security-toggle-icon"><LockKeyhole size={16} /></span><span><strong>Multi-factor authentication</strong><small>MFA is disabled by default and is configured here, not on the sign-in form.</small>{mfaSecret && <small>Setup secret: <code>{mfaSecret}</code></small>}</span><button type="button" className={`toggle-switch ${mfaEnabled ? 'toggle-on' : ''}`} role="switch" aria-checked={mfaEnabled} onClick={() => void toggleMfa()}><span /></button></div>
         {mfaSecret && <Field label={mfaEnabled ? 'Authenticator code to disable MFA' : 'Authenticator code to confirm MFA'}><Input inputMode="numeric" pattern="[0-9]{6}" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} placeholder="6-digit code" /></Field>}
         <div className="settings-panel-footer"><span>{mfaEnabled ? 'MFA is enabled.' : 'MFA is currently disabled.'}</span><Button icon={Save} onClick={() => save('Security preferences')}>Save security</Button></div>

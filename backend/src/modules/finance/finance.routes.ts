@@ -27,6 +27,23 @@ router.get('/payments', requirePermission('repayments.capture'), asyncRoute(asyn
   const data = await PaymentModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ createdAt: -1 }).limit(200).lean()
   response.json({ success: true, message: 'Repayments retrieved successfully', data })
 }))
+router.get('/journal', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const branchId = request.query.branchId ? String(request.query.branchId) : undefined
+  if (branchId) assertBranchAccess(request, branchId)
+  const data = await JournalModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ createdAt: -1 }).limit(200).lean()
+  response.json({ success: true, message: 'Journal entries retrieved successfully', data })
+}))
+router.post('/journal', requirePermission('accounting.journal.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ branchId: z.string(), sourceType: z.string().min(2), sourceId: z.string().min(1), lines: z.array(z.object({ account: z.string().min(2), debitMinor: z.number().int().nonnegative().default(0), creditMinor: z.number().int().nonnegative().default(0) })).min(2) }).parse(request.body)
+  const user = currentUser(request); assertBranchAccess(request, input.branchId)
+  const debit = input.lines.reduce((sum, line) => sum + line.debitMinor, 0)
+  const credit = input.lines.reduce((sum, line) => sum + line.creditMinor, 0)
+  if (debit === 0 || debit !== credit || input.lines.some((line) => line.debitMinor > 0 && line.creditMinor > 0)) throw new HttpError(400, 'UNBALANCED_JOURNAL', 'Journal debits and credits must balance and each line must have one side.')
+  const entry = await JournalModel.create({ ...input, tenantId: user.tenantId })
+  await recordAudit({ user, action: 'journal.created', entityType: 'journal_entry', entityId: entry.id, branchId: input.branchId, next: { sourceType: input.sourceType, debitMinor: debit } })
+  response.status(201).json({ success: true, message: 'Journal entry created', data: entry })
+}))
 router.post('/payments', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ branchId: z.string(), loanAccountId: z.string(), reference: z.string().min(3), amountMinor: z.number().int().positive(), method: z.string().min(2) }).parse(request.body)
   const user = currentUser(request)

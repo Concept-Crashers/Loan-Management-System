@@ -1,6 +1,6 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Check, CircleAlert, Clock3, LoaderCircle, type LucideIcon } from 'lucide-react'
+import { Check, CircleAlert, Clock3, Eye, EyeOff, KeyRound, LoaderCircle, type LucideIcon } from 'lucide-react'
 import { cn } from './utils'
 
 const buttonStyles = cva('lf-button', {
@@ -25,6 +25,15 @@ export function Card({ children, className = '', ...props }: { children: ReactNo
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className = '', ...props }, ref) {
   return <input ref={ref} className={cn('lf-input', className)} {...props} />
 })
+
+export function IconInput({ icon: Icon, ...props }: InputHTMLAttributes<HTMLInputElement> & { icon: LucideIcon }) {
+  return <span className="lf-input-icon-wrap"><Icon className="lf-input-leading-icon" size={15} strokeWidth={1.8} /><Input {...props} className={cn('lf-input-with-icon', props.className)} /></span>
+}
+
+export function PasswordInput({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [visible, setVisible] = useState(false)
+  return <span className="lf-password-wrap"><KeyRound className="lf-input-leading-icon" size={15} strokeWidth={1.8} /><Input {...props} type={visible ? 'text' : 'password'} className={cn('lf-input-with-icon lf-input-with-toggle', className)} /><button type="button" className="lf-input-toggle" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Hide password' : 'Show password'} title={visible ? 'Hide password' : 'Show password'}>{visible ? <EyeOff size={16} /> : <Eye size={16} />}</button></span>
+}
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className = '', ...props }, ref) {
   return <textarea ref={ref} className={cn('lf-input lf-textarea', className)} {...props} />

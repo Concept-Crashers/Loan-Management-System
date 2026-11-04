@@ -2,7 +2,6 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
-import pino from 'pino'
 import { env } from './config/env.js'
 import { asyncRoute, errorHandler } from './core/http.js'
 import identityRoutes from './modules/identity/identity.routes.js'
@@ -21,17 +20,15 @@ import { openApiDocument } from './openapi.js'
 import documentRoutes from './modules/customers/document.routes.js'
 import reconciliationRoutes from './modules/finance/reconciliation.routes.js'
 import { databaseReadiness } from './config/database.js'
+import settingsRoutes from './modules/organisation/settings.routes.js'
+import { correlationMiddleware, metricsText } from './core/observability.js'
 
 export const app = express()
 app.use(helmet())
 app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: true }))
 app.use(express.json({ limit: '1mb' }))
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true }))
-const logger = pino()
-app.use((request, _response, next) => {
-  logger.info({ method: request.method, url: request.originalUrl }, 'request')
-  next()
-})
+app.use(correlationMiddleware)
 
 app.get('/health', asyncRoute(async (_request, response) => {
   response.json({ success: true, message: 'LendFlow API is healthy', data: { status: 'ok', timestamp: new Date().toISOString() } })
@@ -44,6 +41,9 @@ app.get('/health/ready', asyncRoute(async (_request, response) => {
   }
   response.json({ success: true, message: 'Service is ready', data })
 }))
+app.get('/metrics', (_request, response) => {
+  response.type('text/plain').send(metricsText())
+})
 app.use('/api/v1/auth', identityRoutes)
 app.use('/api/v1/customers', customerRoutes)
 app.use('/api/v1/documents', documentRoutes)
@@ -54,6 +54,7 @@ app.use('/api/v1/reports', reportRoutes)
 app.use('/api/v1/sync', syncRoutes)
 app.use('/api/v1/notifications', notificationRoutes)
 app.use('/api/v1/organisation', organisationRoutes)
+app.use('/api/v1/organisation', settingsRoutes)
 app.use('/api/v1/credit-assessments', creditRoutes)
 app.use('/api/v1/collections', collectionRoutes)
 app.use('/api/v1/finance', financeRoutes)

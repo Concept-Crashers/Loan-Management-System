@@ -10,13 +10,13 @@ import { Avatar } from './ui/primitives'
 import { toast } from 'sonner'
 import { logout } from '../lib/api'
 
-interface NavItem { label: string; to: string; icon: LucideIcon; badge?: string }
+interface NavItem { label: string; to: string; icon: LucideIcon; badge?: string; permission?: string }
 const groups: { label: string; items: NavItem[] }[] = [
   { label: 'WORKSPACE', items: [{ label: 'Dashboard', to: '/', icon: LayoutDashboard }] },
-  { label: 'CUSTOMER MANAGEMENT', items: [{ label: 'Customers', to: '/customers', icon: Users }, { label: 'Register customer', to: '/customers/new', icon: Plus }] },
-  { label: 'LOAN OPERATIONS', items: [{ label: 'Loan products', to: '/products', icon: CreditCard }, { label: 'Applications', to: '/applications', icon: Command, badge: '5' }, { label: 'Approvals', to: '/approvals', icon: ShieldCheck, badge: '3' }, { label: 'Active loans', to: '/loans', icon: Wallet }, { label: 'Repayment schedules', to: '/schedules', icon: PanelLeftClose }] },
-  { label: 'FINANCIAL OPERATIONS', items: [{ label: 'Disbursements', to: '/disbursements', icon: Building2 }, { label: 'Repayments', to: '/repayments', icon: Wallet }, { label: 'Transactions', to: '/transactions', icon: CreditCard }, { label: 'Collections', to: '/collections', icon: Bell, badge: '2' }] },
-  { label: 'MANAGEMENT', items: [{ label: 'Reports', to: '/reports', icon: LayoutDashboard }, { label: 'Documents', to: '/documents', icon: FileText }, { label: 'Bulk imports', to: '/imports', icon: UploadCloud }, { label: 'Activity centre', to: '/activity', icon: History }, { label: 'Branches', to: '/branches', icon: Building2 }, { label: 'Staff & users', to: '/staff', icon: Users }, { label: 'Audit logs', to: '/audit-logs', icon: ShieldCheck }, { label: 'Settings', to: '/settings', icon: CircleHelp }] },
+  { label: 'CUSTOMER MANAGEMENT', items: [{ label: 'Customers', to: '/customers', icon: Users, permission: 'customers.view' }, { label: 'Register customer', to: '/customers/new', icon: Plus, permission: 'customers.create' }] },
+  { label: 'LOAN OPERATIONS', items: [{ label: 'Loan products', to: '/products', icon: CreditCard, permission: 'loans.products.view' }, { label: 'Applications', to: '/applications', icon: Command, badge: '5', permission: 'loans.applications.view' }, { label: 'Approvals', to: '/approvals', icon: ShieldCheck, badge: '3', permission: 'loans.applications.approve' }, { label: 'Active loans', to: '/loans', icon: Wallet, permission: 'loans.accounts.view' }, { label: 'Repayment schedules', to: '/schedules', icon: PanelLeftClose, permission: 'loans.accounts.view' }] },
+  { label: 'FINANCIAL OPERATIONS', items: [{ label: 'Disbursements', to: '/disbursements', icon: Building2, permission: 'loans.disburse.execute' }, { label: 'Repayments', to: '/repayments', icon: Wallet, permission: 'repayments.capture' }, { label: 'Transactions', to: '/transactions', icon: CreditCard, permission: 'accounting.journal.view' }, { label: 'Collections', to: '/collections', icon: Bell, badge: '2', permission: 'collections.view' }] },
+  { label: 'MANAGEMENT', items: [{ label: 'Reports', to: '/reports', icon: LayoutDashboard, permission: 'reports.view' }, { label: 'Documents', to: '/documents', icon: FileText, permission: 'customers.view' }, { label: 'Bulk imports', to: '/imports', icon: UploadCloud, permission: 'customers.create' }, { label: 'Activity centre', to: '/activity', icon: History, permission: 'audit.view' }, { label: 'Branches', to: '/branches', icon: Building2, permission: 'branches.view' }, { label: 'Staff & users', to: '/staff', icon: Users, permission: 'identity.users.view' }, { label: 'Audit logs', to: '/audit-logs', icon: ShieldCheck, permission: 'audit.view' }, { label: 'Settings', to: '/settings', icon: CircleHelp, permission: 'organisation.settings.view' }] },
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -26,9 +26,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const role = useSelector((state: RootState) => state.session.role)
   const theme = useSelector((state: RootState) => state.session.theme)
   const branding = useSelector((state: RootState) => state.branding)
+  const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [pwaUpdate, setPwaUpdate] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   useEffect(() => {
@@ -46,6 +49,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener('keydown', handleSearchShortcut)
     return () => window.removeEventListener('keydown', handleSearchShortcut)
   }, [])
+  useEffect(() => {
+    const handleOnline = () => setOnline(true)
+    const handleOffline = () => setOnline(false)
+    const handleUpdate = () => setPwaUpdate(true)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('lendflow:pwa-update', handleUpdate)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('lendflow:pwa-update', handleUpdate)
+    }
+  }, [])
   const results = useMemo(() => {
     if (query.trim().length < 2) return []
     const q = query.toLowerCase()
@@ -55,15 +71,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ].slice(0, 6)
   }, [query])
   const current = groups.flatMap((group) => group.items).find((item) => item.to === location.pathname || (item.to !== '/' && location.pathname.startsWith(item.to)))
+  const canSee = (item: NavItem) => !item.permission || permissions.includes(item.permission) || permissions.includes('*')
 
   function selectResult(path: string) { navigate(path); setQuery(''); setSearchOpen(false) }
 
-  return <div className="app-frame">
+  return <div className="app-frame">{pwaUpdate && <div className="pwa-update-banner" role="status">A new version is ready. <button onClick={() => window.location.reload()}>Reload</button></div>}
     <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
       <div className="brand-lockup">{branding.logoDataUrl ? <img className="brand-logo-image" src={branding.logoDataUrl} alt="" /> : <div className="brand-mark"><span /><span /><span /></div>}<div className="brand-copy"><strong>{branding.companyName}</strong><small>{branding.tagline}</small></div><button className="mobile-close" onClick={() => dispatch(closeSidebar())} aria-label="Close menu"><X size={18} /></button></div>
       <div className="branch-switcher"><span className="branch-avatar"><Building2 size={15} /></span><span><strong>Kampala Central</strong><small>Primary branch</small></span><ChevronDown size={14} className="branch-chevron" /></div>
-      <nav className="sidebar-nav" aria-label="Main navigation">{groups.map((group) => <div className="nav-group" key={group.label}><button className="nav-group-label nav-group-toggle" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))} aria-expanded={!collapsedGroups[group.label]}>{group.label}<ChevronDown size={11} /></button>{!collapsedGroups[group.label] && group.items.map(({ label, to, icon: Icon, badge }) => <NavLink key={to} to={to} end={to === '/'} onClick={() => dispatch(closeSidebar())} className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <span className="nav-badge">{badge}</span>}</NavLink>)}</div>)}</nav>
-      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17} /></span><strong>Need a hand?</strong><p>Explore the getting started guide.</p><button onClick={() => toast.info('Help centre will connect in a future release.')}>Open help centre <span>→</span></button></div><div className="sidebar-version"><span className="online-dot" /> {branding.companyName} <span className="version-pill">MVP</span></div></div>
+      <nav className="sidebar-nav" aria-label="Main navigation">{groups.map((group) => { const visibleItems = group.items.filter(canSee); return visibleItems.length ? <div className="nav-group" key={group.label}><button className="nav-group-label nav-group-toggle" onClick={() => setCollapsedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))} aria-expanded={!collapsedGroups[group.label]}>{group.label}<ChevronDown size={11} /></button>{!collapsedGroups[group.label] && visibleItems.map(({ label, to, icon: Icon, badge }) => <NavLink key={to} to={to} end={to === '/'} onClick={() => dispatch(closeSidebar())} className={({ isActive }) => `nav-item ${isActive ? 'nav-item-active' : ''}`}><Icon size={17} strokeWidth={1.8} /><span>{label}</span>{badge && <span className="nav-badge">{badge}</span>}</NavLink>)}</div> : null})}</nav>
+      <div className="sidebar-bottom"><div className="help-card"><span className="help-icon"><CircleHelp size={17} /></span><strong>Need a hand?</strong><p>Explore the getting started guide.</p><button onClick={() => toast.info('Help centre will connect in a future release.')}>Open help centre <span>→</span></button></div><div className="sidebar-version"><span className={`online-dot ${online ? '' : 'offline-dot'}`} /> {online ? branding.companyName : 'Offline mode'} <span className="version-pill">PWA</span></div></div>
     </aside>
     {sidebarOpen && <button className="sidebar-scrim" onClick={() => dispatch(closeSidebar())} aria-label="Close navigation" />}
     <div className="main-column">
