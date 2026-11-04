@@ -86,6 +86,30 @@ export function saveOrganisationSettings(settings: OrganisationSettings) {
   return apiRequest<OrganisationSettings>('/api/v1/organisation/settings', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
+export function listCashbook() {
+  return apiRequest<Array<Record<string, unknown>>>('/api/v1/finance/cashbook')
+}
+
+export function settleCashbookEntry(id: string) {
+  return apiRequest<Record<string, unknown>>(`/api/v1/finance/cashbook/${encodeURIComponent(id)}/settle`, { method: 'POST' })
+}
+
+export function listSyncConflicts() {
+  return apiRequest<Array<Record<string, unknown>>>('/api/v1/sync/conflicts')
+}
+
+export function resolveSyncConflict(id: string, resolution: 'accept_local' | 'accept_server' | 'manual') {
+  return apiRequest<Record<string, unknown>>(`/api/v1/sync/conflicts/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify({ resolution }) })
+}
+
+export function listDeadLetterDeliveries() {
+  return apiRequest<Array<Record<string, unknown>>>('/api/v1/notifications/deliveries/dead-letter')
+}
+
+export function retryNotificationDelivery(id: string) {
+  return apiRequest<Record<string, unknown>>(`/api/v1/notifications/deliveries/${encodeURIComponent(id)}/retry`, { method: 'POST' })
+}
+
 export async function restoreSession() {
   if (!await refreshAccessToken()) return null
   authenticatedUser = await apiRequest<AuthUser>('/api/v1/auth/me', {}, false)

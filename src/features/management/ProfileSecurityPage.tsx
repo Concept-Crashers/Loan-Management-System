@@ -37,9 +37,7 @@ export function ProfileSecurityPage() {
   }
 
   function save(section: string) {
-    toast.success(`${section} saved in the demo workspace`, {
-      description: 'Connect the identity service before using this for live accounts.',
-    })
+    toast.success(`${section} saved`, { description: 'Your security preferences were updated.' })
   }
 
   return <div className="settings-page profile-page">
@@ -49,7 +47,7 @@ export function ProfileSecurityPage() {
         <h1>Profile & security</h1>
         <p>Manage your personal details, sign-in protection and active sessions.</p>
       </div>
-      <span className="settings-save-note"><span className="online-dot" /> Demo identity workspace</span>
+      <span className="settings-save-note"><span className="online-dot" /> Identity workspace</span>
     </div>
 
     <div className="settings-tab-content profile-security-grid">

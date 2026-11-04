@@ -135,7 +135,8 @@ export const api = {
     }))
   },
   listRepayments: async (): Promise<Repayment[]> => {
-    const records = await apiRequest<Array<Record<string, unknown>>>('/api/v1/finance/payments')
+    const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/payments')
+    const records = Array.isArray(response) ? response : response.data
     return records.map((record) => ({
       id: String(record._id ?? record.id ?? ''),
       customer: String(record.customer ?? ''),
@@ -149,6 +150,9 @@ export const api = {
       status: record.status === 'reversed' ? 'Reversed' : record.status === 'confirmed' ? 'Successful' : 'Pending review',
     }))
   },
+  listCollections: (query = '') => apiRequest<{ data: Array<Record<string, unknown>>; meta: Record<string, number> }>(`/api/v1/collections${query}`),
+  listBranches: (query = '') => apiRequest<{ data: Array<Record<string, unknown>>; meta: Record<string, number> }>(`/api/v1/organisation/branches${query}`),
+  listStaff: (query = '') => apiRequest<{ data: Array<Record<string, unknown>>; meta: Record<string, number> }>(`/api/v1/organisation/staff${query}`),
   reportSummary: (query = '') => apiRequest<Record<string, unknown>>(`/api/v1/reports/summary${query}`),
   dashboardSummary: (query = '') => apiRequest<{ activeLoans: number; confirmedRepaymentsMinor: number; overdueLoans: number; generatedAt: string }>(`/api/v1/reports/dashboard${query}`),
   createCustomer: async (input: Partial<Customer>) => {

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Activity, ArrowDownToLine, ArrowRight, Banknote, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, FileBarChart2, Printer, Users, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, Card, Input, Select } from '../../components/ui/primitives'
-import { applications, collections, customers, loans, repayments, transactions } from '../../data/mock-data'
+import { applications, collections, customers, loans, repayments, transactions } from '../../data/empty-data'
 
 type ReportRow = Record<string, string | number>
 type ReportOption = { key: string; label: string; description: string; icon: typeof WalletCards; count: number; dateKey?: string; data: () => ReportRow[] }

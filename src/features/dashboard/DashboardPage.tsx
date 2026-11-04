@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, Banknote, CalendarClock, ChevronRight, Cir
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, Button, StatusBadge, Select } from '../../components/ui/primitives'
-import { applications, loans, repayments, schedules } from '../../data/mock-data'
+import { applications, loans, repayments, schedules } from '../../data/empty-data'
 import { formatDate, formatUGX } from '../../lib/format'
 import { api } from '../../lib/services'
 

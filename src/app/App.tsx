@@ -15,6 +15,7 @@ import { SettingsPage } from '../features/management/SettingsPage'
 import { ProfileSecurityPage } from '../features/management/ProfileSecurityPage'
 import { OperationsCenterPage } from '../features/management/OperationsCenterPage'
 import { ProtectedRoute } from '../components/ProtectedRoute'
+import { EnterpriseOperationsPage } from '../features/management/EnterpriseOperationsPage'
 
 const ReportsPage = lazy(() => import('../features/management/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
@@ -60,6 +61,7 @@ export function App() {
       <Route path="documents" element={<OperationsCenterPage initialTab="documents" />} />
       <Route path="imports" element={<OperationsCenterPage initialTab="imports" />} />
       <Route path="activity" element={<OperationsCenterPage initialTab="activity" />} />
+      <Route path="enterprise-operations" element={<EnterpriseOperationsPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Route>
   </Routes>

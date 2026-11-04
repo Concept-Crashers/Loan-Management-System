@@ -7,6 +7,7 @@ import { recordAudit } from '../audit/audit.service.js'
 import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, CashbookModel, LoanEventModel } from './finance.model.js'
 import mongoose from 'mongoose'
 import { ApplicationModel } from '../applications/application.model.js'
+import { pagination, paged } from '../../core/pagination.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -24,15 +25,15 @@ router.get('/payments', requirePermission('repayments.capture'), asyncRoute(asyn
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   if (branchId) assertBranchAccess(request, branchId)
-  const data = await PaymentModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ createdAt: -1 }).limit(200).lean()
-  response.json({ success: true, message: 'Repayments retrieved successfully', data })
+  const result = await paged(PaymentModel, { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }), ...(request.query.status ? { status: String(request.query.status) } : {}) }, pagination(request))
+  response.json({ success: true, message: 'Repayments retrieved successfully', ...result })
 }))
 router.get('/journal', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   if (branchId) assertBranchAccess(request, branchId)
-  const data = await JournalModel.find({ tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }).sort({ createdAt: -1 }).limit(200).lean()
-  response.json({ success: true, message: 'Journal entries retrieved successfully', data })
+  const result = await paged(JournalModel, { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }, pagination(request))
+  response.json({ success: true, message: 'Journal entries retrieved successfully', ...result })
 }))
 router.get('/cashbook', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)

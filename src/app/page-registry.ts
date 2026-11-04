@@ -1,4 +1,4 @@
-import { applications, collections, customers, loans, products, repayments, schedules, staff, transactions } from '../data/mock-data'
+import { applications, collections, customers, loans, products, repayments, schedules, staff, transactions } from '../data/empty-data'
 import { formatUGX } from '../lib/format'
 import type { TableRow } from '../lib/types'
 
@@ -25,31 +25,31 @@ export const pageRegistry: Record<string, PageDefinition> = {
     title: 'Customers', subtitle: 'Manage borrowers and maintain a clear record of every customer relationship.', newTo: '/customers/new', newLabel: 'Register customer', detailBase: '/customers', detailKey: 'id', filterKey: 'status', filterLabel: 'Status',
     columns: [{ label: 'Customer', key: 'name', format: 'person' }, { label: 'Customer ID', key: 'id', format: 'mono' }, { label: 'Telephone', key: 'phone' }, { label: 'District', key: 'district' }, { label: 'Loans', key: 'loans' }, { label: 'Outstanding', key: 'outstanding', format: 'money' }, { label: 'Status', key: 'status', format: 'status' }, { label: 'Registered', key: 'registered', format: 'date' }],
     getRows: () => customers.map((item) => ({ id: item.id, name: item.name, phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })),
-    stats: [{ label: 'Total registered', value: '2,104', helper: 'Across 4 branches' }, { label: 'Active borrowers', value: '1,876', helper: '+8.4% this month' }, { label: 'With active loans', value: '1,238', helper: '58.8% of customers' }],
+    stats: [],
   },
   '/products': {
     title: 'Loan products', subtitle: 'Configure lending terms once, then apply them consistently across loan applications.', newTo: '/products/new', newLabel: 'Create product', detailBase: '/products', detailKey: 'id', filterKey: 'state', filterLabel: 'Availability', filterOptions: ['Active', 'Inactive'],
     columns: [{ label: 'Product', key: 'name', format: 'person' }, { label: 'Product ID', key: 'id', format: 'mono' }, { label: 'Loan range', key: 'range' }, { label: 'Interest / year', key: 'rate' }, { label: 'Duration', key: 'duration' }, { label: 'Repayment', key: 'frequency' }, { label: 'Status', key: 'state', format: 'status' }],
     getRows: () => products.map((item) => ({ id: item.id, name: item.name, range: `${money(item.minAmount)} – ${money(item.maxAmount)}`, rate: `${item.interestRate}%`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })),
-    stats: [{ label: 'Products available', value: '4', helper: 'Across personal & business' }, { label: 'Most selected', value: 'Business Growth', helper: '48% of active portfolio' }, { label: 'Terms disclosure', value: 'Enabled', helper: 'Ready for applications' }],
+    stats: [],
   },
   '/applications': {
     title: 'Loan applications', subtitle: 'Track new requests from submission through review and decision.', newTo: '/applications/new', newLabel: 'New application', detailBase: '/applications', detailKey: 'id', filterKey: 'status', filterLabel: 'Application status',
     columns: [{ label: 'Application', key: 'id', format: 'mono' }, { label: 'Applicant', key: 'customer', format: 'person' }, { label: 'Loan product', key: 'product' }, { label: 'Requested amount', key: 'amount', format: 'money' }, { label: 'Duration', key: 'duration' }, { label: 'Loan officer', key: 'officer' }, { label: 'Submitted', key: 'submitted', format: 'date' }, { label: 'Status', key: 'status', format: 'status' }],
     getRows: () => applications.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, product: item.product, amount: item.amount, duration: `${item.duration} months`, officer: item.officer, submitted: item.submitted, status: item.status })),
-    stats: [{ label: 'Awaiting review', value: '12', helper: '4 submitted today' }, { label: 'In assessment', value: '8', helper: 'Average 1.8 days' }, { label: 'Decision this month', value: '37', helper: '72% approval rate' }],
+    stats: [],
   },
   '/approvals': {
     title: 'Loan approvals', subtitle: 'Review the request, assessment and proposed terms before recording a decision.', filterKey: 'status', filterLabel: 'Decision queue',
     columns: [{ label: 'Application', key: 'id', format: 'mono' }, { label: 'Applicant', key: 'customer', format: 'person' }, { label: 'Product', key: 'product' }, { label: 'Requested', key: 'amount', format: 'money' }, { label: 'Monthly income', key: 'income', format: 'money' }, { label: 'Loan officer', key: 'officer' }, { label: 'Submitted', key: 'submitted', format: 'date' }, { label: 'Status', key: 'status', format: 'status' }],
     getRows: () => applications.filter((item) => ['Submitted', 'Under Review', 'Additional Information Required'].includes(item.status)).map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, product: item.product, amount: item.amount, income: item.income, officer: item.officer, submitted: item.submitted, status: item.status })),
-    stats: [{ label: 'Waiting for review', value: '3', helper: 'Oldest request 2 days' }, { label: 'Additional information', value: '2', helper: 'Follow up with applicants' }, { label: 'Decision required', value: '3', helper: 'Approver role required' }],
+    stats: [],
   },
   '/loans': {
     title: 'Active loans', subtitle: 'Monitor disbursed accounts, upcoming obligations and outstanding balances.', detailBase: '/loans', detailKey: 'ref', filterKey: 'status', filterLabel: 'Loan status',
     columns: [{ label: 'Loan reference', key: 'ref', format: 'mono' }, { label: 'Borrower', key: 'customer', format: 'person' }, { label: 'Product', key: 'product' }, { label: 'Principal', key: 'principal', format: 'money' }, { label: 'Outstanding', key: 'outstanding', format: 'money' }, { label: 'Next due', key: 'nextDue', format: 'date' }, { label: 'Status', key: 'status', format: 'status' }],
     getRows: () => loans.map((item) => ({ ref: item.ref, customer: item.customer, customerId: item.customerId, product: item.product, principal: item.principal, outstanding: item.outstanding, nextDue: item.nextDue, status: item.status })),
-    stats: [{ label: 'Active accounts', value: String(loans.filter((item) => item.status === 'Active').length), helper: 'Across 4 loan products' }, { label: 'Outstanding balance', value: money(loans.reduce((sum, item) => sum + item.outstanding, 0)), helper: 'Illustrative demo figures' }, { label: 'Overdue accounts', value: '1', helper: 'Needs collections review' }],
+    stats: [],
   },
   '/disbursements': {
     title: 'Disbursements', subtitle: 'Record approved loans when funds have been released to a borrower.', newTo: '/disbursements/new', newLabel: 'Record disbursement', filterKey: 'state', filterLabel: 'Disbursement status',

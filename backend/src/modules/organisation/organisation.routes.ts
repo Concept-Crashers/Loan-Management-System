@@ -6,12 +6,13 @@ import { currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { BranchModel, StaffAssignmentModel } from './organisation.model.js'
 import { IdentityModel } from '../identity/identity.model.js'
+import { pagination, paged } from '../../core/pagination.js'
 
 const router = Router()
 router.use(requireAuth)
 router.get('/branches', requirePermission('branches.view'), asyncRoute(async (request: AuthRequest, response) => {
-  const data = await BranchModel.find({ tenantId: currentUser(request).tenantId }).sort({ name: 1 }).lean()
-  response.json({ success: true, message: 'Branches retrieved successfully', data })
+  const result = await paged(BranchModel, { tenantId: currentUser(request).tenantId }, pagination(request), { name: 1 })
+  response.json({ success: true, message: 'Branches retrieved successfully', ...result })
 }))
 router.post('/branches', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ code: z.string().min(2), name: z.string().min(2), district: z.string().min(2) }).parse(request.body)
@@ -21,8 +22,9 @@ router.post('/branches', requirePermission('branches.manage'), asyncRoute(async 
   response.status(201).json({ success: true, message: 'Branch created successfully', data: branch })
 }))
 router.get('/staff', requirePermission('identity.users.view'), asyncRoute(async (request: AuthRequest, response) => {
-  const data = await StaffAssignmentModel.find({ tenantId: currentUser(request).tenantId }).populate('userId', 'name email status').lean()
-  response.json({ success: true, message: 'Staff assignments retrieved successfully', data })
+  const result = await paged(StaffAssignmentModel, { tenantId: currentUser(request).tenantId }, pagination(request), { createdAt: -1 })
+  const data = await StaffAssignmentModel.populate(result.data, { path: 'userId', select: 'name email status' })
+  response.json({ success: true, message: 'Staff assignments retrieved successfully', data, meta: result.meta })
 }))
 router.post('/staff', requirePermission('identity.users.update'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ userId: z.string().min(1), branchId: z.string().min(1), roles: z.array(z.string()).min(1) }).parse(request.body)

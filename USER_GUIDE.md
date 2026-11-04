@@ -42,17 +42,23 @@ If a required menu is missing, ask an administrator to review the user’s serve
 
 Financial actions should never be completed from a spreadsheet or by editing browser data. Use the server-backed workflow so tenant, branch, permission, idempotency and audit checks are applied.
 
+Accounting users can review journal and cashbook entries, then settle open cashbook entries only after checking the external cash, bank or mobile-money evidence. Penalties, restructuring, refinancing, settlement and write-off actions require an authorised reason and remain in the loan event history.
+
 ## 4. Documents and privacy
 
 Upload only documents required for the lending process. Documents remain unavailable while they are pending security scanning. Rejected or unscanned files must not be used as approved evidence.
 
 Do not share document URLs, passwords, customer identifiers or exported reports outside approved channels. Document access and sensitive actions are recorded in the audit trail.
 
+Documents under legal hold cannot be deleted. Expired, deleted, rejected or unscanned documents are blocked from download.
+
 ## 5. Offline and PWA use
 
 The system can be installed from the browser as a PWA. The application shell remains available when the connection drops, and supported operations are placed in an encrypted browser queue for later submission.
 
 Offline payment captures are pending operations, not final confirmations. Reconnect, review the queue, and wait for server acknowledgement before treating a financial action as complete.
+
+Authorised users can review notification deliveries in the dead-letter queue and retry them after correcting a provider or destination problem. Offline synchronization conflicts must be resolved as local, server or manual decisions; queued financial captures remain pending review until confirmed by the server.
 
 ## 6. Settings and branding
 

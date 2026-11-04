@@ -5,12 +5,15 @@ import { asyncRoute } from '../../core/http.js'
 import { currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { CollectionModel } from './collection.model.js'
+import { pagination, paged } from '../../core/pagination.js'
 
 const router = Router()
 router.use(requireAuth)
 router.get('/', requirePermission('collections.view'), asyncRoute(async (request: AuthRequest, response) => {
-  const data = await CollectionModel.find({ tenantId: currentUser(request).tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}) }).sort({ followUpAt: 1 }).limit(100).lean()
-  response.json({ success: true, message: 'Collection cases retrieved successfully', data })
+  const options = pagination(request)
+  const filter = { tenantId: currentUser(request).tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(options.search ? { notes: { $regex: options.search, $options: 'i' } } : {}) }
+  const result = await paged(CollectionModel, filter, options, { followUpAt: 1 })
+  response.json({ success: true, message: 'Collection cases retrieved successfully', ...result })
 }))
 router.patch('/:id', requirePermission('collections.manage'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ status: z.enum(['open', 'contacted', 'promise_to_pay', 'escalated', 'resolved']), followUpAt: z.coerce.date().optional(), promiseAmountMinor: z.number().int().nonnegative().optional(), promiseDueAt: z.coerce.date().optional(), notes: z.string().max(2000).default('') }).parse(request.body)
