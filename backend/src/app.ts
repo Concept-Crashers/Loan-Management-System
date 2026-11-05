@@ -26,7 +26,14 @@ import { correlationMiddleware, metricsText } from './core/observability.js'
 
 export const app = express()
 app.use(helmet())
-app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: true }))
+const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    return cb(null, false)
+  },
+  credentials: true,
+}))
 app.use(express.json({ limit: '1mb' }))
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true }))
 app.use(correlationMiddleware)
