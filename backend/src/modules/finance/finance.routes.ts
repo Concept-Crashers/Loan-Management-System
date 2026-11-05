@@ -4,7 +4,7 @@ import { requireAuth, requirePermission, type AuthRequest } from '../../core/aut
 import { asyncRoute, HttpError } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
-import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, CashbookModel, LoanEventModel, ChartAccountModel, AccountingPeriodModel } from './finance.model.js'
+import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, CashbookModel, LoanEventModel, ChartAccountModel, AccountingPeriodModel, RepaymentScheduleModel } from './finance.model.js'
 import mongoose from 'mongoose'
 import { ApplicationModel } from '../applications/application.model.js'
 import { pagination, paged } from '../../core/pagination.js'
@@ -47,8 +47,23 @@ router.get('/payments', requirePermission('repayments.capture'), asyncRoute(asyn
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   if (branchId) assertBranchAccess(request, branchId)
-  const result = await paged(PaymentModel, { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }), ...(request.query.status ? { status: String(request.query.status) } : {}) }, pagination(request))
-  response.json({ success: true, message: 'Repayments retrieved successfully', ...result })
+  const page = pagination(request)
+  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }), ...(request.query.status ? { status: String(request.query.status) } : {}) }
+  const result = await paged(PaymentModel, filter, page)
+  const data = await PaymentModel.find(filter).populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name customerNumber' } }).sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
+  response.json({ success: true, message: 'Repayments retrieved successfully', data, meta: result.meta })
+}))
+router.get('/schedules', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const branchId = request.query.branchId ? String(request.query.branchId) : undefined
+  if (branchId) assertBranchAccess(request, branchId)
+  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }
+  const data = await RepaymentScheduleModel.find(filter)
+    .populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name customerNumber' } })
+    .sort({ dueDate: 1 })
+    .limit(200)
+    .lean()
+  response.json({ success: true, message: 'Repayment schedules retrieved successfully', data })
 }))
 router.get('/journal', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)

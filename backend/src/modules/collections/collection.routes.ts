@@ -13,7 +13,8 @@ router.get('/', requirePermission('collections.view'), asyncRoute(async (request
   const options = pagination(request)
   const filter = { tenantId: currentUser(request).tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(options.search ? { notes: { $regex: options.search, $options: 'i' } } : {}) }
   const result = await paged(CollectionModel, filter, options, { followUpAt: 1 })
-  response.json({ success: true, message: 'Collection cases retrieved successfully', ...result })
+  const data = await CollectionModel.populate(result.data, { path: 'loanAccountId', populate: { path: 'customerId', select: 'name phone customerNumber' } })
+  response.json({ success: true, message: 'Collection cases retrieved successfully', data, meta: result.meta })
 }))
 router.patch('/:id', requirePermission('collections.manage'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ status: z.enum(['open', 'contacted', 'promise_to_pay', 'escalated', 'resolved']), followUpAt: z.coerce.date().optional(), promiseAmountMinor: z.number().int().nonnegative().optional(), promiseDueAt: z.coerce.date().optional(), notes: z.string().max(2000).default('') }).parse(request.body)

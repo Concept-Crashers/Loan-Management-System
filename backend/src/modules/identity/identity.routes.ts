@@ -49,8 +49,8 @@ function validTotp(secret: string, input: string) {
   })
 }
 
-function publicUser(identity: { id: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] }) {
-  return { id: identity.id, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
+function publicUser(identity: { id: string; name?: string; email?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] }): AuthUser {
+  return { id: identity.id, name: identity.name, email: identity.email, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
 }
 
 router.post('/login', asyncRoute(async (request, response) => {

@@ -23,7 +23,12 @@ router.get('/:id', requirePermission('loans.applications.view'), asyncRoute(asyn
 
 router.get('/', requirePermission('loans.applications.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const data = await ApplicationModel.find({ tenantId: user.tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(request.query.branchId ? { branchId: String(request.query.branchId) } : {}) }).sort({ createdAt: -1 }).limit(100).lean()
+  const data = await ApplicationModel.find({ tenantId: user.tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(request.query.branchId ? { branchId: String(request.query.branchId) } : {}) })
+    .populate('customerId', 'name phone customerNumber')
+    .populate('productId', 'name code')
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean()
   response.json({ success: true, message: 'Applications retrieved successfully', data })
 }))
 
