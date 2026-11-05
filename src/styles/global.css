@@ -524,3 +524,6 @@ a { color: inherit; text-decoration: none; }
 .sidebar::-webkit-scrollbar { width: 6px !important; }
 .sidebar::-webkit-scrollbar-thumb { background: #17365D !important; border-radius: 99px; }
 .sidebar::-webkit-scrollbar-track { background: #f1f5f9 !important; }
+
+.auth-security-note { display: flex; justify-content: center; margin-top: 14px; }
+.auth-security-note .lf-badge { font-size: 6.5px; padding: 3px 8px; gap: 4px; }
