@@ -1,7 +1,8 @@
 import { configureStore, createSlice, type PayloadAction } from '@reduxjs/toolkit'
+import type { AuthUser } from '../lib/api'
 
 type Theme = 'light' | 'dark'
-interface SessionState { role: string; sidebarOpen: boolean; theme: Theme; user: { id: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] } | null; authStatus: 'unknown' | 'authenticated' | 'anonymous' }
+interface SessionState { role: string; sidebarOpen: boolean; theme: Theme; user: AuthUser | null; authStatus: 'unknown' | 'authenticated' | 'anonymous' }
 export interface BrandingState { companyName: string; tagline: string; country: string; currency: string; logoDataUrl: string | null }
 const defaultBranding: BrandingState = { companyName: 'LendFlow Microfinance', tagline: 'LOAN OPERATIONS', country: 'Uganda', currency: 'UGX', logoDataUrl: null }
 function loadBranding(): BrandingState {

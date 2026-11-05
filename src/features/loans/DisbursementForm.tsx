@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { LoanAccount } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
-import { mockApi } from '../../lib/services'
+import { api } from '../../lib/services'
 import { Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
 
 const schema = z.object({
@@ -28,7 +28,7 @@ export function DisbursementForm() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const pendingLoans = loans.filter((loan) => loan.status === 'Pending Disbursement')
   useEffect(() => {
-    mockApi.listLoans().then(setLoans).catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Approved loans could not be loaded.'))
+    api.listLoans().then(setLoans).catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Approved loans could not be loaded.'))
   }, [])
   const { register, control, handleSubmit, setError, formState: { errors } } = useForm<DisbursementInput, unknown, DisbursementValues>({
     resolver: zodResolver(schema),
@@ -43,18 +43,18 @@ export function DisbursementForm() {
   async function submit(values: DisbursementValues) {
     const approvedLoan = pendingLoans.find((item) => item.ref === values.loanRef)
     if (!approvedLoan) { setError('loanRef', { message: 'This loan is not awaiting disbursement.' }); return }
-    if (values.amount > approvedLoan.principal) { setError('amount', { message: 'The disbursement cannot exceed the approved principal in this demo.' }); return }
+    if (values.amount > approvedLoan.principal) { setError('amount', { message: 'The disbursement cannot exceed the approved principal amount.' }); return }
     const decision = await Swal.fire({
-      title: 'Record this disbursement?',
-      text: 'This local action is illustrative only. A production API must verify approval authority, approved terms, the payment transfer and its audit event.',
-      icon: 'question', showCancelButton: true, confirmButtonText: 'Record disbursement', cancelButtonText: 'Review details', confirmButtonColor: '#2563eb',
+      title: 'Confirm disbursement',
+      text: `Are you sure you want to disburse ${formatUGX(values.amount)} via ${values.method}?`,
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Confirm disbursement', cancelButtonText: 'Cancel', confirmButtonColor: '#2563eb',
     })
     if (!decision.isConfirmed) return
     setIsSaving(true)
     try {
       if (!approvedLoan.applicationId || !approvedLoan.branchId) throw new Error('This loan is missing its approval or branch linkage.')
-      const result = await mockApi.recordDisbursement({ loanRef: values.loanRef, applicationId: approvedLoan.applicationId, branchId: approvedLoan.branchId, amount: values.amount, date: values.date, method: values.method, reference: values.reference })
-      toast.success('Disbursement recorded', { description: `${result.account.ref} · ${formatUGX(values.amount)}` })
+      const result = await api.recordDisbursement({ loanRef: values.loanRef, applicationId: approvedLoan.applicationId, branchId: approvedLoan.branchId, amount: values.amount, date: values.date, method: values.method, reference: values.reference })
+      toast.success('Disbursement recorded successfully', { description: `${result.account.ref ?? values.loanRef} · ${formatUGX(values.amount)}` })
       navigate('/disbursements')
     } catch (error) {
       toast.error('Disbursement not recorded', { description: error instanceof Error ? error.message : 'Please try again.' })

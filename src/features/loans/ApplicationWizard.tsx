@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { Avatar, Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
 import type { Customer, LoanProduct } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
-import { mockApi } from '../../lib/services'
+import { api } from '../../lib/services'
 
 const schema = z.object({
   customerId: z.string().min(1, 'Choose a borrower.'), product: z.string().min(1, 'Choose a loan product.'),
@@ -35,7 +35,7 @@ export function ApplicationWizard() {
   const stepFields: (keyof FormInput)[][] = [['customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
 
   useEffect(() => {
-    Promise.all([mockApi.listCustomers(), mockApi.listProducts()])
+    Promise.all([api.listCustomers(), api.listProducts()])
       .then(([loadedCustomers, loadedProducts]) => { setCustomers(loadedCustomers); setProducts(loadedProducts) })
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Reference data could not be loaded.'))
   }, [])
@@ -43,7 +43,7 @@ export function ApplicationWizard() {
   async function nextStep() { const valid = await trigger(stepFields[step]); if (valid) setStep((value) => Math.min(3, value + 1)) }
   async function submit(values: FormValues) {
     if (!product) throw new Error('Choose an active loan product.')
-    const record = await mockApi.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
+    const record = await api.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
     toast.success('Application submitted for review', { description: `Reference ${record.id} · server decision pending` })
     navigate(`/applications/${record.id}`)
   }

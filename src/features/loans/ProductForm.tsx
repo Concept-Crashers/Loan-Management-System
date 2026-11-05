@@ -5,7 +5,7 @@ import { ArrowLeft, Info, Save } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
-import { mockApi } from '../../lib/services'
+import { api } from '../../lib/services'
 
 const schema = z.object({ name: z.string().min(3, 'Name this product.'), description: z.string().min(5, 'Add a short description.'), minAmount: z.coerce.number().min(1000), maxAmount: z.coerce.number().min(1000), interestRate: z.coerce.number().min(0).max(100), interestMethod: z.string(), duration: z.coerce.number().min(1), frequency: z.enum(['Weekly', 'Bi-weekly', 'Monthly']), gracePeriod: z.coerce.number().min(0), fees: z.string(), lateRule: z.string(), documents: z.string() }).refine((value) => value.maxAmount >= value.minAmount, { path: ['maxAmount'], message: 'Maximum must be at least the minimum.' })
 type ProductInput = z.input<typeof schema>
@@ -15,8 +15,8 @@ export function ProductForm() {
   const navigate = useNavigate()
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ProductInput, unknown, ProductValues>({ resolver: zodResolver(schema), defaultValues: { name: '', description: '', minAmount: 100000, maxAmount: 5000000, interestRate: 15, interestMethod: 'Reducing balance', duration: 12, frequency: 'Monthly', gracePeriod: 0, fees: '', lateRule: '', documents: '' } })
   async function submit(values: ProductValues) {
-    const record = await mockApi.createProduct({ ...values, requiredDocuments: values.documents })
-    toast.success('Product added to demo catalogue', { description: `${record.name} · ${record.id}` })
+    const record = await api.createProduct({ ...values, requiredDocuments: values.documents })
+    toast.success('Product created successfully', { description: `${record.name} · ${record.id}` })
     navigate('/products')
   }
   return <div className="form-page"><div className="page-heading"><div><div className="eyebrow"><Link to="/products"><ArrowLeft size={13} /> LOAN PRODUCTS</Link><span className="eyebrow-separator">/</span> CONFIGURATION</div><h1>Create loan product</h1><p>Define flexible, transparent terms for future applications.</p></div></div>

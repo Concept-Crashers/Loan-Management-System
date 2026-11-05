@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
 import type { Customer, LoanAccount, Repayment } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
-import { mockApi } from '../../lib/services'
+import { api } from '../../lib/services'
 
 const schema = z.object({ customerId: z.string().min(1, 'Choose a customer.'), loan: z.string().min(1, 'Choose an active loan.'), amount: z.coerce.number().min(1, 'Enter a payment amount.'), method: z.enum(['MTN Mobile Money', 'Airtel Money', 'Bank transfer', 'Cash', 'Other']), reference: z.string().min(3, 'Enter a transaction reference or cash receipt note.'), date: z.string().min(1, 'Choose the date received.'), notes: z.string() })
 type FormInput = z.input<typeof schema>
@@ -26,7 +26,7 @@ export function RepaymentForm() {
   const availableLoans = useMemo(() => loans.filter((item) => item.customerId === selectedCustomer && ['Active', 'Overdue'].includes(item.status)), [selectedCustomer])
   const amount = Number(watch('amount') ?? 0)
   useEffect(() => {
-    Promise.all([mockApi.listCustomers(), mockApi.listLoans(), mockApi.listRepayments()])
+    Promise.all([api.listCustomers(), api.listLoans(), api.listRepayments()])
       .then(([loadedCustomers, loadedLoans, loadedRepayments]) => { setCustomers(loadedCustomers); setLoans(loadedLoans); setRepayments(loadedRepayments) })
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Repayment reference data could not be loaded.'))
   }, [])
@@ -41,7 +41,7 @@ export function RepaymentForm() {
       const result = await Swal.fire({ title: 'Possible duplicate reference', text: `This reference appears on ${duplicate.id}. Confirm only after checking the source transaction.`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Continue for review', confirmButtonColor: '#d97706', cancelButtonText: 'Review entry' })
       if (!result.isConfirmed) return
     }
-    const record = await mockApi.recordRepayment({ loanAccountId: values.loan, amount: values.amount, method: values.method, reference: values.reference.trim() })
+    const record = await api.recordRepayment({ loanAccountId: values.loan, amount: values.amount, method: values.method, reference: values.reference.trim() })
     toast.success('Payment recorded', { description: `${record.id} · ${formatUGX(record.amount)}` })
     navigate(`/repayments/${record.id}`)
   }

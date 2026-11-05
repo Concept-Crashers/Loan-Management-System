@@ -55,6 +55,7 @@ export interface Application {
   officer: string
   purpose: string
   obligations: number
+  version?: number
 }
 
 export interface LoanAccount {

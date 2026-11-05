@@ -6,7 +6,7 @@ import { ArrowLeft, Check, FileText, Save, UploadCloud } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Avatar, Button, Card, Field, Input, Select } from '../../components/ui/primitives'
-import { mockApi } from '../../lib/services'
+import { api } from '../../lib/services'
 
 const schema = z.object({
   name: z.string().min(3, 'Enter the borrower’s full name.'),
@@ -38,8 +38,8 @@ export function CustomerForm() {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { name: '', dateOfBirth: '', phone: '', email: '', address: '', district: '', town: '', idType: 'National ID (NIN)', nationalId: '', occupation: '', employer: '', monthlyIncome: 0, nextOfKin: '', nextOfKinRelationship: '', nextOfKinPhone: '' } })
 
   async function submit(values: FormValues) {
-    const customer = await mockApi.createCustomer(values)
-    toast.success('Customer added to demo workspace', { description: `${customer.name} · ${customer.id}` })
+    const customer = await api.createCustomer(values)
+    toast.success('Customer registered successfully', { description: `${customer.name} · ${customer.id}` })
     navigate(`/customers/${customer.id}`)
   }
 
