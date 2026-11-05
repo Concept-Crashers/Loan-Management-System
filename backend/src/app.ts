@@ -28,9 +28,11 @@ export const app = express()
 app.set('trust proxy', 1)
 app.use(helmet())
 const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
+const allowAllOrigins = allowedOrigins.includes('*')
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    if (!origin || allowAllOrigins) return cb(null, true)
+    if (allowedOrigins.includes(origin)) return cb(null, true)
     return cb(null, false)
   },
   credentials: true,

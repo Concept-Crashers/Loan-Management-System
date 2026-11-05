@@ -37,8 +37,8 @@ const schema = z.object({
   }
   if (value.NODE_ENV === 'production') {
     const origins = value.FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
-    if (origins.length === 0 || origins.some((o) => !o.startsWith('https://'))) {
-      context.addIssue({ code: 'custom', path: ['FRONTEND_ORIGIN'], message: 'Production frontend origins must use HTTPS (comma-separated allowed).' })
+    if (origins.length === 0 || (!origins.includes('*') && origins.some((o) => !o.startsWith('https://')))) {
+      context.addIssue({ code: 'custom', path: ['FRONTEND_ORIGIN'], message: 'Production frontend origins must use HTTPS (comma-separated), or set * to allow all.' })
     }
   }
   if (value.NODE_ENV === 'production' && (value.JWT_ACCESS_SECRET.startsWith('replace-') || value.JWT_REFRESH_SECRET.startsWith('replace-'))) {
