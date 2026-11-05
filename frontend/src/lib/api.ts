@@ -1,6 +1,6 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ??
-  (import.meta.env.PROD ? 'https://lmss-drmr.onrender.com' : 'http://localhost:4000')
+// In production, use the same-origin /api rewrite so the CSRF cookie is first-party.
+// For local development, VITE_API_URL may point at a local backend; otherwise Vite proxies /api.
+const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL ?? '')
 
 export interface AuthUser {
   id: string
