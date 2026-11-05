@@ -1,37 +1,38 @@
-# LendFlow Frontend — Implementation Plan
+# LendFlow — Frontend and Repository Synchronization Plan
 
 ## Scope and approach
 
-Build a frontend-only React/TypeScript/Vite lending operations console for the Uganda Loan Management System MVP in the supplied blueprint. The deliverable will be a functional, navigable prototype with sample records and client-side demonstration interactions. Backend services, durable financial records, authentication enforcement, authoritative loan calculations, payment allocation, and real integrations are explicitly deferred. The app will expose typed API/service seams so a backend can replace the mock provider later without rewriting page components.
+Build and maintain a frontend-first React/TypeScript/Vite lending operations console for the Uganda Loan Management System MVP in the supplied blueprint. The active frontend is now the user's newer GitHub implementation under `frontend/`; it adds an API-backed service boundary, authentication/session flow, offline queue, accounting, audit, imports/documents/activity and enterprise operations. The GitHub repository also includes an Express/Mongoose backend source tree under `backend/`.
 
-The application will include a responsive authenticated-operations shell and screens for Dashboard; Customers and customer registration/profile; Loan Products; Loan Applications and their review/approval; Active Loans and loan detail; Disbursements; Repayments and record repayment/receipt; Repayment Schedules; Collections; Reports; Transactions; Branches; Staff & Users; Audit Logs; and Settings, alongside Login and Forgot Password. The shell will use the supplied navigation groups and realistic Uganda-oriented sample data (UGX, Ugandan phone formats, MTN/Airtel Money, bank, cash). Tables will support meaningful search/filter/sort affordances; forms and high-value actions will show validation, confirmation, success/error feedback, and appropriate empty/loading states. Key prototype interactions include opening record details, changing relevant UI-only statuses, completing multi-step application and repayment flows, creating records in local mock state, and printing a sample receipt/report. All such state is illustrative and resets with the page; it is not a financial source of truth.
+Synchronize the Manus project's canonical `main` and `https://github.com/Concept-Crashers/Loan-Management-System` `main` without force-pushing or rewriting either history. Their starting histories are unrelated, so preserve both with a two-parent merge. Keep the imported monorepo paths (`frontend/`, `backend/`) as the shared source structure, and make the existing Manus Preview run the `frontend` workspace package. Preserve the previous root-based Manus frontend in Git history and carry forward its relevant safeguards and user requirements, especially Work Sans, role-aware approval controls, repayment-balance guards, and the completed settings styling.
 
-Loan terms and payment allocation must be presented as backend-sourced/illustrative values only. The frontend must not claim to calculate authoritative balances, interest, repayment schedules, allocations, or approval outcomes. Permission-aware UI cues will demonstrate role distinctions without implying real access control. Legal/regulatory applicability remains for the lender's compliance adviser to confirm before production use.
+The backend source is included because it is already part of the user's repository. Do not start or enable Manus-managed server/database services in this sync. Do not configure credentials or make the browser authoritative for balances, interest, schedules, allocations, or approval decisions. Any API behavior remains subject to the user's own backend configuration and access controls; confirm regulatory applicability with the lender's compliance adviser before production use.
+
+## Product and interaction scope
+
+The interface includes a responsive operations shell and routes for Dashboard; Customers and registration/profile; Loan Products; Loan Applications and approval review; Active Loans; Disbursements; Repayments and receipts; Repayment Schedules; Collections; Reports; Transactions; Branches; Staff & Users; Audit Logs; Settings; Profile & Security; Documents; Imports; Activity; Enterprise Operations; Accounting; Login; and Forgot Password. Use Uganda-oriented UX: UGX, Ugandan phone formats, MTN/Airtel Money, bank transfer and cash. Preserve meaningful search/filtering, confirmations, success/error feedback, loading/empty/error states and permission distinctions.
+
+All figures and user-impacting decisions remain backend-sourced or explicitly illustrative. Roles and sensitive data must remain permission-aware; UI-only controls are not security enforcement. The frontend must never claim that a browser-side balance, interest calculation, payment allocation, decision or record is authoritative.
 
 ## Implementation architecture
 
-- React + TypeScript + Vite; React Router for route/page composition.
-- Bootstrap 5 grid and responsive layout primitives, with shadcn/ui-style accessible controls and composed components; avoid layering competing Bootstrap and Tailwind visual styles.
-- Work Sans as the primary font, sourced via CSS font import, with a restrained fintech palette from the blueprint: deep navy `#17365D`, blue `#2563EB`, cool light background `#F8FAFC`, and success/warning/danger semantic colors.
-- Lucide React icons (the shadcn icon convention), Recharts for dashboard/report visualizations, React Hook Form + Zod for form state/validation, TanStack Query + Axios-shaped API client boundary, Redux Toolkit for session/navigation-level prototype state as appropriate, date-fns for date formatting, SweetAlert2 for destructive/decision confirmations, and Sonner toast notifications for routine feedback.
-- Typed domain models and mock API adapter live separately from feature UI. Use consistent reusable page headers, KPI cards, data tables, status badges, filters, dialogs/sheets, section forms, timeline/activity components, and money/date formatters.
-- Include a static `/manus-routes.json` that stays synchronized with the actual route table.
-- No managed server or database is enabled during this frontend phase. Later backend work will provide authoritative API behavior and persistence through the typed service boundary.
+- React + TypeScript + Vite, with React Router for the route tree.
+- Bootstrap 5 grid and responsive layout primitives with shadcn/ui-style accessible components; avoid competing styling systems.
+- Work Sans as the primary font, sourced in `frontend/index.html` and used throughout the stylesheet. Use deep navy `#17365D`, action blue `#2563EB`, cool light backgrounds and semantic status colors.
+- Lucide React icons, Recharts, React Hook Form + Zod, TanStack Query, Axios-shaped API client boundary, Redux Toolkit, date-fns, SweetAlert2 and Sonner toast notifications.
+- Typed domain/API models, backend-facing service adapters and offline queue live under `frontend/src/lib/`; feature components remain separated by domain.
+- The root pnpm workspace exposes `dev`, `build` and `preview` scripts forwarding to the frontend package, which listens on the configured Preview port 3000.
+- Keep `frontend/public/manus-routes.json` synchronized with every actual page route. Preserve the project-root `app.config.ts` HTTPS `logoUrl` for Manus project branding.
+- The `backend/` source is synchronized but Manus `features.server` and `features.database` remain disabled; this task does not start the service or deploy it.
 
-## Proposed project structure
+## Project structure
 
-- `src/app/` — router, app providers, top-level shell, navigation and route guards/placeholders.
-- `src/components/` — reusable shadcn-style UI primitives and shared tables, forms, badges, cards and feedback.
-- `src/features/dashboard/` — metrics, charts, recent activity and quick actions.
-- `src/features/customers/` — customer directory, registration form and profile.
-- `src/features/loans/` — product catalogue, application wizard/review, loan accounts/details and disbursement.
-- `src/features/repayments/` — payment directory, recording flow, receipts and schedules.
-- `src/features/collections/` — follow-up queue, communication history and status actions.
-- `src/features/management/` — reports, transactions, branches, staff/roles, audit log and settings.
-- `src/data/` — typed sample data and mock provider.
-- `src/lib/` — API client seam, formatting, validation helpers and constants.
-- `src/styles/` — theme tokens, typography and responsive styling.
-- `public/manus-routes.json` — canonical frontend route manifest.
+- `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` — root workspace and Preview/build forwarding scripts.
+- `frontend/` — the active React/Vite application and its own HTML, Vite/TypeScript config, assets, route manifest, page routes, shared components, domain features, API/service boundary, offline queue and Work Sans design system.
+- `backend/` — the user's existing Express/Mongoose service source, API routes, domain modules, tests and deployment/container definitions; source is preserved but not enabled by Manus in this phase.
+- `docker-compose.yml`, `README.md`, `USER_GUIDE.md` — repository-level development/deployment documentation from the user's repository.
+- `app.config.ts` — root-level Manus project branding metadata; keep its durable quoted HTTPS logo URL.
+- `plan.md`, `TODO.md` — this synchronized implementation plan and the full original MVP acceptance clauses plus repository-sync outcome.
 
 ## Design direction
 
@@ -44,10 +45,10 @@ Loan terms and payment allocation must be presented as backend-sourced/illustrat
 - **Animation:** Restrained 120–180 ms fades/slides for menus, dialogs, and page entry; subtle hover/focus transitions; honor reduced-motion preferences and avoid animated financial data.
 - **Typography System:** Work Sans throughout. Use clear semibold page/section hierarchy, medium-weight table headers, tabular figures for currency and IDs, and comfortable body copy for forms and customer details.
 - **Brand Essence:** A clear operational workspace for Uganda lending teams, connecting borrower care and disciplined loan administration; **grounded, capable, transparent**.
-- **Brand Voice:** Direct, respectful, and specific. Examples: “Review the terms before you submit.” “Payment recorded in this demo; final balances come from the lending service.”
+- **Brand Voice:** Direct, respectful, and specific. Examples: “Review the terms before you submit.” “Payment recorded; final balances come from the lending service.”
 - **Wordmark & Logo:** A compact custom “L” ledger-mark concept formed from a navy vertical stroke and a blue rising balance line, beside the LendFlow wordmark.
 - **Signature Brand Color:** Deep ledger navy `#17365D`, balanced by action blue `#2563EB`.
 
 ## Frontend/backend boundary
 
-All modules will use mock data behind a typed service interface. Prototype forms/actions can update local demo state and demonstrate intended workflows, but the UI will label mock behavior where financial authority matters. API methods will be structured around later service operations (list/get/create/update/decision/record payment/report) and accept server-returned terms, balances, allocations, and permissions. No production credentials, backend, payment gateway, SMS/email delivery, or durable personal data will be added in this phase.
+The frontend consumes the user's backend through the typed API/service boundary and can use `VITE_API_URL` for environment-specific service routing. The corresponding backend source is included in the synchronized repository, but this Manus project keeps its managed server/database features off. Before relying on the API, verify the configured endpoint, authorization, privacy, business rules and applicable compliance requirements. Browser UI guards are advisory only; the backend must enforce access control, transaction integrity, authoritative financial calculations and audit history.

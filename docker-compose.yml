@@ -1,0 +1,55 @@
+services:
+  mongo:
+    image: mongo:8
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - mongo-data:/data/db
+  mongo-init:
+    image: mongo:8
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "mongosh --host mongo:27017 --eval 'try { rs.status() } catch (e) { rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"mongo:27017\"}]}) }'"
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/lendflow?replicaSet=rs0
+      MONGODB_REQUIRE_REPLICA_SET: "true"
+      NODE_ENV: production
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "4000:4000"
+  mongo-backup:
+    image: mongo:8
+    profiles: ["backup"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/lendflow?replicaSet=rs0
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mongodump --uri=\"$${MONGODB_URI}\" --archive=\"$${BACKUP_DIR}/lendflow-$$(date +%Y%m%d-%H%M%S).archive.gz\" --gzip"]
+volumes:
+  mongo-data:
