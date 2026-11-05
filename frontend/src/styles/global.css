@@ -526,3 +526,22 @@ a { color: inherit; text-decoration: none; }
 
 .auth-security-note { display: flex; justify-content: center; margin-top: 14px; }
 .auth-security-note .lf-badge { font-size: 6.5px; padding: 3px 8px; gap: 4px; }
+
+/* Searchable select */
+.lf-searchable-select { position: relative; }
+.lf-searchable-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; cursor: pointer; background: #fff; }
+.lf-searchable-trigger.is-open { border-color: #8bb0e3; box-shadow: 0 0 0 2px rgb(49 115 202 / 10%); }
+.lf-searchable-placeholder { color: #a6b1bf; }
+.lf-searchable-popover { position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid #e3e8ef; border-radius: 7px; background: #fff; box-shadow: 0 10px 30px rgb(22 40 64 / 12%); overflow: hidden; }
+.lf-searchable-search { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-bottom: 1px solid #edf1f5; color: #8fa0b5; }
+.lf-searchable-search input { flex: 1; border: 0; outline: none; background: transparent; font: inherit; font-size: 10px; color: #3f5570; }
+.lf-searchable-options { max-height: 220px; overflow-y: auto; padding: 4px; }
+.lf-searchable-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 5px; background: transparent; text-align: left; font: inherit; font-size: 10px; color: #435a75; cursor: pointer; }
+.lf-searchable-option:hover, .lf-searchable-option.is-selected { background: #f3f7fc; color: #2f5f96; }
+.lf-searchable-empty { padding: 10px; color: #97a4b4; font-size: 9px; text-align: center; }
+.lf-searchable-required { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+/* Phone input */
+.lf-phone-input { display: grid; grid-template-columns: 148px 1fr; gap: 6px; }
+.lf-phone-code { padding-right: 22px; font-size: 9px; }
+.lf-phone-number { min-width: 0; }
+@media (max-width: 560px) { .lf-phone-input { grid-template-columns: 1fr; } }
