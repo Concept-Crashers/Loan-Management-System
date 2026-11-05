@@ -73,7 +73,7 @@ router.post('/login', asyncRoute(async (request, response) => {
   identity.refreshTokenHash = await bcrypt.hash(refreshToken, 12)
   identity.failedLoginCount = 0
   await identity.save()
-  response.cookie('lendflow_refresh', refreshToken, { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
+  response.cookie('lendflow_refresh', refreshToken, { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
   response.json({ success: true, message: 'Signed in successfully', data: { accessToken, user } })
 }))
 
@@ -169,7 +169,7 @@ router.get('/me', requireAuth, asyncRoute(async (request: AuthRequest, response)
 
 router.post('/logout', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
   await IdentityModel.updateOne({ _id: request.user?.id }, { $unset: { refreshTokenHash: 1 } })
-  response.clearCookie('lendflow_refresh', { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/v1/auth' })
+  response.clearCookie('lendflow_refresh', { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', path: '/api/v1/auth' })
   response.json({ success: true, message: 'Signed out successfully', data: null })
 }))
 
@@ -191,7 +191,7 @@ router.post('/refresh', asyncRoute(async (request, response) => {
   const rotatedToken = jwt.sign({ sub: identity.id }, env.JWT_REFRESH_SECRET, { expiresIn: env.REFRESH_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
   identity.refreshTokenHash = await bcrypt.hash(rotatedToken, 12)
   await identity.save()
-  response.cookie('lendflow_refresh', rotatedToken, { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
+  response.cookie('lendflow_refresh', rotatedToken, { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
   response.json({ success: true, message: 'Token refreshed successfully', data: { accessToken, user } })
 }))
 

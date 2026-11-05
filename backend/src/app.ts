@@ -25,6 +25,7 @@ import settingsRoutes from './modules/organisation/settings.routes.js'
 import { correlationMiddleware, metricsText } from './core/observability.js'
 
 export const app = express()
+app.set('trust proxy', 1)
 app.use(helmet())
 const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
 app.use(cors({
@@ -40,7 +41,7 @@ app.use(correlationMiddleware)
 app.use((request, response, next) => {
   const cookie = request.header('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith('lendflow_csrf='))?.slice('lendflow_csrf='.length)
   const csrfToken = cookie ?? crypto.randomBytes(24).toString('base64url')
-  if (!cookie) response.cookie('lendflow_csrf', csrfToken, { httpOnly: false, secure: env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/' })
+  if (!cookie) response.cookie('lendflow_csrf', csrfToken, { httpOnly: false, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/' })
   const exempt = request.path.includes('/auth/login') || request.path.includes('/auth/refresh') || request.path.includes('/auth/forgot-password') || request.path.includes('/auth/reset-password') || request.path.includes('/auth/verify-email')
   if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS' && !exempt && request.path.startsWith('/api/')) {
     if (request.header('x-csrf-token') !== csrfToken) {
