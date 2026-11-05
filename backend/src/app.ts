@@ -27,12 +27,17 @@ import { correlationMiddleware, metricsText } from './core/observability.js'
 export const app = express()
 app.set('trust proxy', 1)
 app.use(helmet())
-const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
-const allowAllOrigins = allowedOrigins.includes('*')
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://lendflow-nine.vercel.app',
+  'https://lms-cyan-eta.vercel.app',
+]
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || allowAllOrigins) return cb(null, true)
-    if (allowedOrigins.includes(origin)) return cb(null, true)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    const extra = (process.env.FRONTEND_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    if (extra.includes('*') || extra.includes(origin)) return cb(null, true)
     return cb(null, false)
   },
   credentials: true,
