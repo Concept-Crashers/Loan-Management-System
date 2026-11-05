@@ -22,12 +22,14 @@ if (!branchIds.length) throw new Error('SYSTEM_ADMIN_BRANCH_IDS must contain at 
 
 const permissions = [
   'customers.view', 'customers.create', 'customers.update', 'customers.documents.view', 'customers.documents.manage',
-  'loan-products.view', 'loan-products.manage', 'applications.view', 'applications.create', 'applications.decide',
+  'loan-products.view', 'loan-products.manage', 'loans.products.view',
+  'applications.view', 'applications.create', 'applications.decide', 'loans.applications.view', 'loans.applications.approve',
   'loans.accounts.view', 'loans.accounts.manage', 'loans.disburse.authorize', 'loans.disburse.execute',
   'repayments.capture', 'repayments.confirm', 'repayments.reverse', 'collections.view', 'collections.manage',
   'accounting.journal.view', 'accounting.journal.create', 'accounting.reconciliation.manage',
   'reports.view', 'reports.export', 'audit.view', 'notifications.view', 'notifications.manage',
-  'organisation.settings.view', 'organisation.settings.manage', 'users.view', 'users.manage',
+  'organisation.settings.view', 'organisation.settings.manage', 'users.view', 'users.manage', 'identity.users.view',
+  'branches.view', 'branches.manage', '*',
 ]
 
 await connectDatabase()
@@ -36,7 +38,7 @@ try {
   if (existing) throw new Error('A user with this email already exists in the tenant.')
   const identity = await IdentityModel.create({
     tenantId, email, name, branchIds, roles: ['Super Admin'], permissions,
-    passwordHash: await bcrypt.hash(password, 8), status: 'active', emailVerifiedAt: new Date(),
+    passwordHash: await bcrypt.hash(password, 12), status: 'active', emailVerifiedAt: new Date(),
   })
   console.log(`Created system administrator ${identity.email} for tenant ${tenantId}.`)
 } finally {
