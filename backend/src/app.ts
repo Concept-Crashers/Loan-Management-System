@@ -30,7 +30,7 @@ app.use(helmet())
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://lend-flow-b789.onrender.com',
+  'https://trust-loans.vercel.app',
   'https://lms-cyan-eta.vercel.app',
 ]
 app.use(cors({
