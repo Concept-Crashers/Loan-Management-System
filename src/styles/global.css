@@ -207,7 +207,7 @@ a { color: inherit; text-decoration: none; }
 .alert-strip { min-height: 41px; display: flex; align-items: center; gap: 9px; margin: 12px 0 15px; padding: 8px 11px; border: 1px solid #f1e4cc; border-radius: 7px; color: #8d795b; background: #fffaf1; font-size: 8px; }
 .alert-icon { width: 24px; height: 24px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 6px; color: #bd873c; background: #fff1d9; }
 .alert-strip strong { color: #8b6c39; font-weight: 650; }.alert-strip > a { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: #9d763e; font-weight: 600; white-space: nowrap; }
-.dashboard-charts-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 12px; }
+.dashboard-charts-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 12px; margin-top: 12px; }
 .chart-card { min-height: 300px; padding: 14px; }
 .chart-card-header, .card-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .chart-card-header h2, .card-section-header h2 { margin: 0; color: #3a4e68; font-size: 11px; font-weight: 650; }

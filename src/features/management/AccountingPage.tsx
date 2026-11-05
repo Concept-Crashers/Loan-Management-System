@@ -52,8 +52,8 @@ export function AccountingPage() {
       await load()
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Accounting period could not be closed.') }
   }
-  const rows = tab === 'accounts' ? accounts.data : tab === 'periods' ? periods.data : ledger.data
-  const meta = tab === 'accounts' ? accounts.meta : tab === 'periods' ? periods.meta : ledger.meta
+const rows = tab === 'accounts' ? (accounts?.data ?? []) : tab === 'periods' ? (periods?.data ?? []) : (ledger?.data ?? [])
+const meta = tab === 'accounts' ? (accounts?.meta ?? { page: 1, pageSize: 25, total: 0, pageCount: 1 }) : tab === 'periods' ? (periods?.meta ?? { page: 1, pageSize: 25, total: 0, pageCount: 1 }) : (ledger?.meta ?? { page: 1, pageSize: 25, total: 0, pageCount: 1 })
   return <div className="settings-page">
     <div className="page-heading"><div><div className="eyebrow">FINANCE <span className="eyebrow-separator">/</span> ACCOUNTING</div><h1>Accounting & reporting</h1><p>Manage the chart of accounts, periods, ledger and financial exports.</p></div><div className="heading-actions"><Button variant="outline" icon={RefreshCw} onClick={() => void load()}>Refresh</Button><Button variant="outline" icon={Download} onClick={() => void exportPortfolioSummary().then(() => toast.success('Portfolio summary exported')).catch((error) => toast.error(error instanceof Error ? error.message : 'Export failed.'))}>Portfolio export</Button></div></div>
     <div className="operations-tabs" role="tablist">{([{ key: 'accounts', label: 'Chart of accounts', icon: BookOpen }, { key: 'periods', label: 'Accounting periods', icon: WalletCards }, { key: 'ledger', label: 'General ledger', icon: BookOpen }, { key: 'trial-balance', label: 'Trial balance', icon: Scale }] as const).map(({ key, label, icon: Icon }) => <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'operations-tab operations-tab-active' : 'operations-tab'} onClick={() => { setTab(key); setPage(1) }}><Icon size={15} />{label}</button>)}</div>
