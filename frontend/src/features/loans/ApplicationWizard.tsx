@@ -36,7 +36,7 @@ export function ApplicationWizard() {
   const stepFields: (keyof FormInput)[][] = [['customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
   const activeProducts = useMemo(() => products.filter((item) => item.active), [products])
   const customerOptions = useMemo(() => customers.map((p) => ({ value: p.recordId ?? p.id, label: `${p.name} · ${p.id}` })), [customers])
-  const productOptions = useMemo(() => (activeProducts.length ? activeProducts : products).map((p) => ({ value: p.recordId ?? p.id, label: `${p.name}${p.active ? '' : ' (inactive)'} · ${formatUGX(p.minAmount)}–${formatUGX(p.maxAmount)}` })), [activeProducts, products])
+  const productOptions = useMemo(() => activeProducts.map((p) => ({ value: p.recordId ?? p.id, label: `${p.name} · ${formatUGX(p.minAmount)}–${formatUGX(p.maxAmount)} · ${p.duration} mo` })), [activeProducts])
 
   async function loadRefData() {
     setLoadingRef(true)
@@ -46,7 +46,7 @@ export function ApplicationWizard() {
     if (pRes.status === 'fulfilled') {
       setProducts(pRes.value)
       if (!pRes.value.length) setLoadError((e) => e ?? 'No loan products found. Create an active loan product first.')
-      else if (!pRes.value.some((p) => p.active)) setLoadError((e) => e ?? 'No active loan products found. Activate or create a loan product.')
+      else if (!pRes.value.some((p) => p.active)) setLoadError((e) => e ?? 'No active loan products found. Activate or create a loan product, then reload.')
     } else {
       setLoadError((e) => e ?? (pRes.reason instanceof Error ? pRes.reason.message : 'Loan products could not be loaded.'))
       toast.error(pRes.reason instanceof Error ? pRes.reason.message : 'Failed to load loan products.')
@@ -64,7 +64,9 @@ export function ApplicationWizard() {
   async function nextStep() { const valid = await trigger(stepFields[step]); if (valid) setStep((value) => Math.min(3, value + 1)) }
   async function submit(values: FormValues) {
     try {
-      if (!product) throw new Error('Choose an active loan product.')
+      const selected = products.find((item) => (item.recordId ?? item.id) === values.product)
+      if (!selected) throw new Error('Selected loan product could not be resolved. Reload products and try again.')
+      if (!selected.active) throw new Error('Selected loan product is not active. Choose an active product.')
       const record = await api.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
       const ref = (record as any)?.id ?? (record as any)?._id ?? (record as any)?.applicationId ?? (record as any)?.data?.id ?? (record as any)?.data?._id
       toast.success('Application submitted for review', { description: ref ? `Reference ${String(ref)} · server decision pending` : 'Server decision pending' })
