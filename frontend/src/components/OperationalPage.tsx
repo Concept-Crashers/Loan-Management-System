@@ -370,10 +370,22 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               <DropdownMenu.Item className="dropdown-item" onSelect={() => openRow(row)}>
                                 <Eye size={15} /> View details
                               </DropdownMenu.Item>
+                              {path === '/customers' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateCustomerStatus(String(row.recordId ?? row.id), active ? 'inactive' : 'active', 1); toast.success(active ? 'Customer deactivated' : 'Customer activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Customer status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                              )}
                               {path === '/products' && (
                                 <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>
                                   {String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}
                                 </DropdownMenu.Item>
+                              )}
+                              {path === '/staff' && (
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditStaff(row); setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' }) }}>Edit staff</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateStaffUser(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Staff deactivated' : 'Staff activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                                </>
+                              )}
+                              {path === '/branches' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                               )}
                               {path === '/repayments' && String(row.status ?? '') === 'Pending review' && (
                                 <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</DropdownMenu.Item>

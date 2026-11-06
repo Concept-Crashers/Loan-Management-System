@@ -331,14 +331,20 @@ export const api = {
     }))
   },
 
+  updateCustomerStatus: (id: string, status: 'active' | 'inactive' | 'watchlist' | 'archived', version = 1) =>
+    apiRequest<Customer>(`/api/v1/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status, version }) }),
+
   createBranch: (input: { code: string; name: string; district: string; managerId?: string }) =>
     apiRequest<BranchRecord>('/api/v1/organisation/branches', { method: 'POST', body: JSON.stringify(input) }),
 
-  updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null }) =>
+  updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null; status?: 'active' | 'suspended' }) =>
     apiRequest<BranchRecord>(`/api/v1/organisation/branches/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
   updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string }) =>
     apiRequest<{ data?: unknown }>(`/api/v1/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  updateChartAccount: (id: string, input: { name?: string; active?: boolean }) =>
+    apiRequest<{ _id?: string }>(`/api/v1/finance/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
   listAuditLogs: async (): Promise<Array<Record<string, unknown>>> => {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/audit')

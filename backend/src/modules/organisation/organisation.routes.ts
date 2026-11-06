@@ -26,7 +26,7 @@ router.post('/branches', requirePermission('branches.manage'), asyncRoute(async 
   response.status(201).json({ success: true, message: 'Branch created successfully', data: branch })
 }))
 router.patch('/branches/:id', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ code: z.string().min(2).optional(), name: z.string().min(2).optional(), district: z.string().min(2).optional(), managerId: z.string().nullable().optional() }).parse(request.body)
+  const input = z.object({ code: z.string().min(2).optional(), name: z.string().min(2).optional(), district: z.string().min(2).optional(), managerId: z.string().nullable().optional(), status: z.enum(['active', 'suspended']).optional() }).parse(request.body)
   const user = currentUser(request)
   if (input.managerId) {
     const mgr = await IdentityModel.findOne({ _id: input.managerId, tenantId: user.tenantId }).select('_id').lean()

@@ -13,6 +13,7 @@ const customerInput = z.object({
   address: z.string().min(3), district: z.string().min(2), idType: z.string().min(1), nationalId: z.string().min(3),
   occupation: z.string().min(2), employer: z.string().min(2), monthlyIncomeMinor: z.number().int().nonnegative(),
   nextOfKin: z.string().min(3), nextOfKinRelationship: z.string().min(2), nextOfKinPhone: z.string().min(7), dateOfBirth: z.coerce.date().optional(),
+  status: z.enum(['active', 'inactive', 'watchlist', 'archived']).optional(),
 })
 
 router.use(requireAuth)

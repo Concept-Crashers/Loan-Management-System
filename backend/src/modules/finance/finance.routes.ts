@@ -138,6 +138,14 @@ router.post('/accounts', requirePermission('accounting.journal.create'), asyncRo
   const account = await ChartAccountModel.create({ ...input, tenantId: currentUser(request).tenantId })
   response.status(201).json({ success: true, message: 'Chart account created', data: account })
 }))
+router.patch('/accounts/:id', requirePermission('accounting.journal.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), active: z.boolean().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const account = await ChartAccountModel.findOneAndUpdate({ _id: request.params.id, tenantId: user.tenantId }, { $set: input }, { new: true })
+  if (!account) throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Chart account was not found.')
+  await recordAudit({ user, action: 'chart_account.updated', entityType: 'chart_account', entityId: account.id, next: input })
+  response.json({ success: true, message: 'Chart account updated', data: account })
+}))
 router.get('/periods', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
