@@ -1,5 +1,6 @@
-// Set VITE_API_URL to override the production API origin; local development uses Vite's /api proxy.
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://lmss-drmr.onrender.com' : '')
+// Use same-origin /api so CSRF cookies are first-party; Vercel rewrites /api to the backend.
+// Set VITE_API_URL only when you intentionally need a direct cross-origin backend.
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 export interface AuthUser {
   id: string
@@ -15,12 +16,24 @@ type ApiEnvelope<T> = { success: boolean; message: string; data: T; code?: strin
 let accessToken: string | null = null
 let authenticatedUser: AuthUser | null = null
 let refreshPromise: Promise<boolean> | null = null
+let csrfPromise: Promise<string | null> | null = null
 
 export function setAccessToken(token: string | null) { accessToken = token }
 export function getAuthenticatedUser() { return authenticatedUser }
-function csrfToken() {
+function readCsrfToken() {
   if (typeof document === 'undefined') return null
   return document.cookie.split('; ').find((cookie) => cookie.startsWith('lendflow_csrf='))?.slice('lendflow_csrf='.length) ?? null
+}
+async function ensureCsrfToken() {
+  const existing = readCsrfToken()
+  if (existing) return existing
+  if (!csrfPromise) {
+    csrfPromise = fetch(`${API_BASE_URL}/health`, { credentials: 'include' })
+      .then(() => readCsrfToken())
+      .catch(() => null)
+      .finally(() => { csrfPromise = null })
+  }
+  return csrfPromise
 }
 
 async function refreshAccessToken() {
@@ -44,8 +57,10 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, canRef
   headers.set('Content-Type', 'application/json')
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   const method = (init.method ?? 'GET').toUpperCase()
-  const csrf = csrfToken()
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) headers.set('X-CSRF-Token', csrf)
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrf = (await ensureCsrfToken()) ?? readCsrfToken()
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: 'include' })
   if (response.status === 401 && canRefresh && await refreshAccessToken()) return apiRequest<T>(path, init, false)
   if (response.ok && response.headers.get('content-type')?.includes('text/csv')) return await response.text() as T
