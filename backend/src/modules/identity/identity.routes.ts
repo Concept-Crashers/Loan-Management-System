@@ -5,7 +5,8 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import { env } from '../../config/env.js'
 import { HttpError, asyncRoute } from '../../core/http.js'
-import { signAccessToken, type AuthUser, requireAuth, type AuthRequest } from '../../core/auth.js'
+import { signAccessToken, type AuthUser, requireAuth, type AuthRequest, requirePermission } from '../../core/auth.js'
+import { currentUser } from '../../core/scope.js'
 import { IdentityModel } from './identity.model.js'
 import { emailProvider } from '../../infrastructure/messaging/providers.js'
 
@@ -183,6 +184,21 @@ router.patch('/me', requireAuth, asyncRoute(async (request: AuthRequest, respons
   if (input.phone !== undefined) (identity as any).phone = input.phone
   await identity.save()
   response.json({ success: true, message: 'Profile updated successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.post('/users', requireAuth, requirePermission('identity.users.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120), email: z.email(), password: passwordSchema, phone: z.string().max(40).optional(), roles: z.array(z.string()).min(1), branchIds: z.array(z.string()).optional(), permissions: z.array(z.string()).optional() }).parse(request.body)
+  const admin = currentUser(request)
+  const exists = await IdentityModel.findOne({ tenantId: admin.tenantId, email: input.email.toLowerCase() }).lean()
+  if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+  const identity = await IdentityModel.create({ tenantId: admin.tenantId, name: input.name, email: input.email.toLowerCase(), phone: input.phone ?? '', passwordHash: await bcrypt.hash(input.password, 12), roles: input.roles, branchIds: input.branchIds ?? [], permissions: input.permissions ?? [], status: 'active' })
+  response.status(201).json({ success: true, message: 'Staff user created successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.get('/users', requireAuth, requirePermission('identity.users.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const admin = currentUser(request)
+  const users = await IdentityModel.find({ tenantId: admin.tenantId }).select('name email phone roles branchIds status createdAt').sort({ createdAt: -1 }).limit(200).lean()
+  response.json({ success: true, message: 'Users retrieved successfully', data: users.map((u) => ({ id: String(u._id), name: u.name, email: u.email, phone: (u as any).phone ?? '', roles: u.roles ?? [], branchIds: u.branchIds ?? [], status: u.status })) })
 }))
 
 router.post('/logout', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
