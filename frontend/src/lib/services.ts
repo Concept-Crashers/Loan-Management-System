@@ -282,22 +282,40 @@ export const api = {
   },
 
   listStaff: async (): Promise<StaffMember[]> => {
-    const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/staff')
-    const records = Array.isArray(response) ? response : (response.data ?? [])
-    return records.map((record) => {
-      const userObj = typeof record.userId === 'object' && record.userId !== null ? (record.userId as { name?: string; email?: string; status?: string; _id?: string }) : null
-      return {
-        id: String(userObj?._id ?? record.userId ?? record._id ?? ''),
-        name: userObj?.name ?? 'Staff Member',
-        email: userObj?.email ?? '',
-        phone: '',
-        role: Array.isArray(record.roles) ? record.roles.join(', ') : 'Staff',
-        branch: 'Kampala Central',
-        lastActive: String(record.updatedAt ?? record.createdAt ?? '').slice(0, 10),
-        status: String(userObj?.status ?? record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
-      }
-    })
+    try {
+      const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/auth/users')
+      const records = Array.isArray(response) ? response : (response.data ?? [])
+      return records.map((record) => ({
+        id: String(record.id ?? record._id ?? ''),
+        name: String(record.name ?? 'Staff Member'),
+        email: String(record.email ?? ''),
+        phone: String(record.phone ?? ''),
+        role: Array.isArray(record.roles) ? (record.roles as string[]).join(', ') : 'Staff',
+        branch: Array.isArray(record.branchIds) && (record.branchIds as unknown[]).length ? String((record.branchIds as string[])[0]) : '—',
+        lastActive: '—',
+        status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
+      }))
+    } catch {
+      const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/staff')
+      const records = Array.isArray(response) ? response : (response.data ?? [])
+      return records.map((record) => {
+        const userObj = typeof record.userId === 'object' && record.userId !== null ? (record.userId as { name?: string; email?: string; status?: string; _id?: string }) : null
+        return {
+          id: String(userObj?._id ?? record.userId ?? record._id ?? ''),
+          name: userObj?.name ?? 'Staff Member',
+          email: userObj?.email ?? '',
+          phone: '',
+          role: Array.isArray(record.roles) ? (record.roles as string[]).join(', ') : 'Staff',
+          branch: 'Kampala Central',
+          lastActive: String(record.updatedAt ?? record.createdAt ?? '').slice(0, 10),
+          status: String(userObj?.status ?? record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
+        }
+      })
+    }
   },
+
+  createStaffUser: (input: { name: string; email: string; password: string; phone?: string; roles: string[]; branchIds?: string[] }) =>
+    apiRequest<{ data?: unknown }>('/api/v1/auth/users', { method: 'POST', body: JSON.stringify(input) }),
 
   listBranches: async (): Promise<BranchRecord[]> => {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/branches')

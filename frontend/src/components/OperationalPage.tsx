@@ -67,6 +67,9 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [branchModal, setBranchModal] = useState(false)
   const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '' })
   const [branchSaving, setBranchSaving] = useState(false)
+  const [staffModal, setStaffModal] = useState(false)
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' })
+  const [staffSaving, setStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -77,7 +80,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const role = useSelector((state: RootState) => state.session.role)
   const roles = useSelector((state: RootState) => state.session.user?.roles ?? [])
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
-  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin'].includes(String(r).toLowerCase().replace(/\s+/g, '_')))
+  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin','admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
   const canReview = isSuperAdmin || ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
   const navigate = useNavigate()
 
@@ -223,20 +226,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     }
   }
 
-  async function saveBranch() {
-    if (!branchForm.code.trim() || !branchForm.name.trim() || !branchForm.district.trim()) { toast.error('Enter branch code, name, and district.'); return }
-    setBranchSaving(true)
+  async function saveStaff() {
+    if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 12) { toast.error('Enter name, valid email, and a password with at least 12 characters.'); return }
+    setStaffSaving(true)
     try {
-      await api.createBranch({ code: branchForm.code.trim(), name: branchForm.name.trim(), district: branchForm.district.trim() })
-      toast.success('Branch created')
-      setBranchModal(false); setBranchForm({ code: '', name: '', district: '' }); await loadData()
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch could not be created.') } finally { setBranchSaving(false) }
+      await api.createStaffUser({ name: staffForm.name.trim(), email: staffForm.email.trim(), password: staffForm.password, phone: staffForm.phone.trim() || undefined, roles: [staffForm.roles] })
+      toast.success('Staff user created')
+      setStaffModal(false); setStaffForm({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be created.') } finally { setStaffSaving(false) }
   }
 
   const headingAction = definition.newTo
     ? <Button onClick={() => navigate(definition.newTo!)}>{definition.newLabel ?? 'Add new'} <span>+</span></Button>
     : definition.newLabel
-      ? <Button onClick={() => path === '/branches' ? setBranchModal(true) : path === '/staff' ? navigate('/staff') : navigate('/settings')}>+ {definition.newLabel}</Button>
+      ? <Button onClick={() => path === '/branches' ? setBranchModal(true) : path === '/staff' ? setStaffModal(true) : navigate('/settings')}>+ {definition.newLabel}</Button>
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
@@ -441,6 +444,31 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
           <div className="dialog-actions">
             <Button variant="outline" disabled={branchSaving} onClick={() => setBranchModal(false)}>Cancel</Button>
             <Button loading={branchSaving} onClick={() => void saveBranch()}>Create branch</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={staffModal} onOpenChange={setStaffModal}>
+        <DialogContent title="Invite staff" description="Create a staff account. Admin/super_admin have full operational rights; roles are stored for workflow/assignment." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Full name" required><Input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Staff name" /></Field>
+            <Field label="Email" required><Input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} placeholder="staff@example.com" /></Field>
+            <Field label="Temporary password" required className="field-span-2"><Input type="password" value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} placeholder="Min 12 chars, upper/lower/number" /></Field>
+            <Field label="Phone"><Input value={staffForm.phone} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} placeholder="+256..." /></Field>
+            <Field label="Role">
+              <Select value={staffForm.roles} onChange={(e) => setStaffForm({ ...staffForm, roles: e.target.value })}>
+                <option value="loan_officer">Loan officer</option>
+                <option value="approver">Approver</option>
+                <option value="manager">Manager</option>
+                <option value="finance">Finance / accounting</option>
+                <option value="collections">Collections</option>
+                <option value="admin">Admin</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
+            <Button loading={staffSaving} onClick={() => void saveStaff()}>Create staff</Button>
           </div>
         </DialogContent>
       </Dialog>
