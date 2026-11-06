@@ -98,8 +98,7 @@ export function DashboardPage() {
       <div className="page-heading dashboard-heading">
         <div>
           <div className="eyebrow"><span className="live-spark" /> {todayStr}</div>
-          <h1>Good day, {userDisplayName} <span className="wave">✳</span></h1>
-          <p>Portfolio overview connected to production database.</p>
+          <h1>Hello, {userDisplayName} <span className="wave">✳</span></h1>
         </div>
         <div className="heading-actions">
           <Button variant="outline" icon={ListFilter} onClick={() => window.print()}>Export overview</Button>
