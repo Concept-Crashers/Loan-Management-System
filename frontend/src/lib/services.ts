@@ -147,6 +147,19 @@ export const api = {
     })
   },
 
+  updateApplication: (id: string, input: { amount?: number; duration?: number; purpose?: string; income?: number; obligations?: number; version: number }) =>
+    apiRequest<Application>(`/api/v1/applications/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...(input.amount !== undefined ? { amountMinor: toMinor(input.amount) } : {}),
+        ...(input.duration !== undefined ? { tenureMonths: input.duration } : {}),
+        ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+        ...(input.income !== undefined ? { incomeMinor: toMinor(input.income) } : {}),
+        ...(input.obligations !== undefined ? { obligationsMinor: toMinor(input.obligations) } : {}),
+        version: input.version,
+      }),
+    }),
+
   decideApplication: (id: string, decision: 'approved' | 'rejected', reason: string, version: number) =>
     apiRequest<Application>(`/api/v1/applications/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
