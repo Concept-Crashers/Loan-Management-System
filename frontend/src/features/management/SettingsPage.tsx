@@ -7,7 +7,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setBranding, type RootState } from '../../store/store'
 import { getOrganisationSettings, saveOrganisationSettings, type OrganisationSettings } from '../../lib/api'
 import { api } from '../../lib/services'
-import type { BranchRecord, StaffMember } from '../../lib/types'
+import type { StaffMember } from '../../lib/types'
+import type { BranchRecord } from '../../lib/services'
 
 const roles = ['Super Admin', 'Admin', 'Manager', 'Loan Officer', 'Credit Officer', 'Approver', 'Cashier', 'Accountant', 'Collections Officer']
 const permissionRows = [

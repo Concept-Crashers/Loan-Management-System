@@ -77,7 +77,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, Omit<SelectHTMLAtt
     setQ('')
   }
   return <div className={cn('lf-searchable-select', className)} ref={wrap}>
-    {name ? <input ref={ref} type="hidden" name={name} value={current} /> : null}
+    {name ? <input ref={ref as React.Ref<HTMLInputElement>} type="hidden" name={name} value={current} /> : null}
     <button id={id} type="button" className={cn('lf-input lf-searchable-trigger', open && 'is-open')} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => !disabled && setOpen((v) => !v)}>
       <span className={cn(!selected && 'lf-searchable-placeholder')}>{selected?.label ?? placeholder}</span>
       <ChevronDown size={14} />

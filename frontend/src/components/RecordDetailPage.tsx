@@ -21,16 +21,20 @@ const sensitiveFields = new Set([
   'monthlyincome', 'income', 'salary', 'outstanding', 'outstandingbalance', 'balance',
 ])
 
-function display(value: unknown) {
+function display(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'boolean') return 'Yes'
+  if (typeof value === 'number') return String(value)
   if (Array.isArray(value)) return value.length ? value.map(display).join(', ') : '—'
   if (typeof value === 'object') {
     const o = value as Record<string, unknown>
     if (o.name) return display(o.name)
     if (o.customerNumber) return display(o.customerNumber)
-    try { return JSON.stringify(value) } catch { return '[object]' }
+    if (o._id) return String(o._id)
+    return JSON.stringify(o)
   }
+  return String(value)
+}
   return String(value)
 }
 

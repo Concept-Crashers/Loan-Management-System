@@ -57,8 +57,9 @@ export function ApplicationWizard() {
   useEffect(() => { void loadRefData() }, [])
   useEffect(() => {
     if (!product || !amount) return
-    if (amount < (product.minAmount || 0)) setValue('amount', product.minAmount, { shouldValidate: true })
-    if (product.maxAmount && amount > product.maxAmount) setValue('amount', product.maxAmount, { shouldValidate: true })
+    const amt = Number(amount)
+    if (Number.isFinite(amt) && amt < (Number(product.minAmount) || 0)) setValue('amount', product.minAmount, { shouldValidate: true })
+    if (Number.isFinite(amt) && product.maxAmount && amt > Number(product.maxAmount)) setValue('amount', product.maxAmount, { shouldValidate: true })
   }, [product?.id])
 
   async function nextStep() { const valid = await trigger(stepFields[step]); if (valid) setStep((value) => Math.min(3, value + 1)) }

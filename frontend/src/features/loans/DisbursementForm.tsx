@@ -53,7 +53,7 @@ export function DisbursementForm() {
     setIsSaving(true)
     try {
       if (!approvedLoan.applicationId || !approvedLoan.branchId) throw new Error('This loan is missing its approval or branch linkage.')
-      const result = await api.recordDisbursement({ loanRef: values.loanRef, applicationId: approvedLoan.applicationId, branchId: approvedLoan.branchId, amount: values.amount, date: values.date, method: values.method, reference: values.reference })
+      await api.recordDisbursement({ loanRef: values.loanRef, applicationId: approvedLoan.applicationId, branchId: approvedLoan.branchId, amount: values.amount, date: values.date, method: values.method, reference: values.reference })
       toast.success('Disbursement recorded successfully', { description: `${values.loanRef} · ${formatUGX(values.amount)}` })
       navigate('/disbursements')
     } catch (error) {
