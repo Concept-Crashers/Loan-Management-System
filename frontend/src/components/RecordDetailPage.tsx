@@ -23,7 +23,7 @@ const sensitiveFields = new Set([
 
 function display(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'boolean') return 'Yes'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'number') return String(value)
   if (Array.isArray(value)) return value.length ? value.map(display).join(', ') : '—'
   if (typeof value === 'object') {
@@ -33,8 +33,6 @@ function display(value: unknown): string {
     if (o._id) return String(o._id)
     return JSON.stringify(o)
   }
-  return String(value)
-}
   return String(value)
 }
 
