@@ -38,8 +38,8 @@ a { color: inherit; text-decoration: none; }
 
 /* App frame, persistent navigation and responsive workspace */
 .app-frame { min-height: 100vh; }
-.sidebar { position: fixed; z-index: 30; inset: 0 auto 0 0; display: flex; width: 260px; flex-direction: column; padding: 18px 14px 12px; overflow-y: auto; scrollbar-width: thin; border-right: 1px solid #e9edf2; background: #fff; }
-.main-column { min-width: 0; min-height: 100vh; margin-left: 248px; display: flex; flex-direction: column; }
+.sidebar { position: fixed; z-index: 30; inset: 0 auto 0 0; display: flex; width: 252px; flex-direction: column; padding: 18px 14px 12px; overflow-y: auto; scrollbar-width: thin; border-right: 1px solid #e9edf2; background: #fff; }
+.main-column { min-width: 0; min-height: 100vh; margin-left: 252px; display: flex; flex-direction: column; }
 .brand-lockup { display: flex; align-items: center; gap: 10px; min-height: 39px; padding: 0 7px; }
 .brand-mark { position: relative; width: 32px; height: 32px; display: flex; align-items: flex-end; gap: 3px; padding: 6px; overflow: hidden; border-radius: 9px; background: #17365d; }
 .brand-mark span { width: 4px; border-radius: 4px; background: #fff; }
@@ -104,8 +104,9 @@ a { color: inherit; text-decoration: none; }
 .profile-trigger:hover { background: #f6f8fa; }
 .profile-meta { display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .profile-meta strong { color: #4f627b; font-size: 10.75px; font-weight: 600; }.profile-meta small { color: #9aa5b2; font-size: 10.75px; }
-.workspace-content { width: 100%; max-width: 100%; flex: 1; margin: 0 auto; padding: 24px 28px 30px; }
-.app-footer { display: flex; justify-content: space-between; gap: 15px; padding: 10px 28px 13px; color: #9da8b5; font-size: 10.75px; }
+.workspace-content { width: 100%; max-width: 100%; flex: 1; min-width: 0; margin: 0; padding: 20px 16px 26px 14px; }
+.workspace-content.container-fluid { width: 100%; max-width: 100%; padding-right: 16px; padding-left: 14px; }
+.app-footer { display: flex; justify-content: space-between; gap: 15px; padding: 10px 16px 13px 14px; color: #9da8b5; font-size: 10.75px; }
 .app-footer button { padding: 0; border: 0; color: #6f87a4; background: none; font-size: inherit; }
 .footer-separator { margin: 0 4px; color: #c8ced6; }
 .mobile-menu, .mobile-close, .sidebar-scrim { display: none; }
@@ -494,7 +495,7 @@ a { color: inherit; text-decoration: none; }
 [data-theme='dark'] .welcome-banner { box-shadow: 0 8px 24px rgb(0 0 0 / 24%); }
 
 @media (max-width: 1100px) {
-  .sidebar { width: 260px; }.main-column { margin-left: 260px; }.workspace-content { padding-right: 19px; padding-left: 19px; }
+  .sidebar { width: 252px; }.main-column { margin-left: 252px; }.workspace-content { padding: 18px 14px 24px 12px; }
   .dashboard-secondary-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-charts-grid { grid-template-columns: minmax(0, 1.3fr) minmax(250px, 1fr); }
   .quick-actions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -504,7 +505,7 @@ a { color: inherit; text-decoration: none; }
   .sidebar { z-index: 61; width: 255px; transform: translateX(-102%); transition: transform .2s ease; box-shadow: 8px 0 25px rgb(24 41 65 / 7%); }.sidebar.sidebar-open { transform: translateX(0); }
   .sidebar-scrim { position: fixed; z-index: 60; inset: 0; display: block; border: 0; background: rgb(20 34 52 / 32%); }
   .mobile-menu { display: grid; }.mobile-close { display: none; }
-  .main-column { margin-left: 0; }.topbar { min-height: 57px; padding: 0 16px; }.workspace-content { padding: 20px 16px 24px; }.app-footer { padding-right: 16px; padding-left: 16px; }
+  .main-column { margin-left: 0; }.topbar { min-height: 57px; padding: 0 14px; }.workspace-content { padding: 16px 12px 22px; }.app-footer { padding-right: 12px; padding-left: 12px; }
   .dashboard-charts-grid { grid-template-columns: 1fr; }.chart-card { min-height: 280px; }.portfolio-card { min-height: 270px; }
   .metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.dashboard-lower-grid { grid-template-columns: 1fr; }.report-catalog { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .module-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
