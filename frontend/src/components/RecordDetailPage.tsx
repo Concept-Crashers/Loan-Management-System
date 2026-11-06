@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Download, FileText, LockKeyhole, RefreshCw, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Download, FileText, LockKeyhole, Pencil, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
@@ -7,8 +7,8 @@ import { Button, Card, StatusBadge } from './ui/primitives'
 import { getRecordDetail, listEntityAudit, type AuditEvent } from '../lib/api'
 import type { RootState } from '../store/store'
 
-const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments'; entity: string; back: string; title: string }> = {
-  customers: { endpoint: 'customers', entity: 'customer', back: '/customers', title: 'Customer' },
+const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
+  customers: { endpoint: 'customers', entity: 'customer', back: '/customers', title: 'Customer', editPath: (id) => `/customers/${id}/edit` },
   products: { endpoint: 'products', entity: 'loan_product', back: '/products', title: 'Loan product' },
   applications: { endpoint: 'applications', entity: 'loan_application', back: '/applications', title: 'Loan application' },
   loans: { endpoint: 'loans', entity: 'loan_account', back: '/loans', title: 'Loan account' },
@@ -22,7 +22,14 @@ const sensitiveFields = new Set([
 
 function display(value: unknown) {
   if (value === null || value === undefined || value === '') return '—'
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.length ? value.map(display).join(', ') : '—'
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>
+    if (o.name) return display(o.name)
+    if (o.customerNumber) return display(o.customerNumber)
+    try { return JSON.stringify(value) } catch { return '[object]' }
+  }
   return String(value)
 }
 
@@ -50,9 +57,9 @@ export function RecordDetailPage() {
     setError(null)
     try {
       const detail = await getRecordDetail(config.endpoint, decodeURIComponent(id))
-      const history = await listEntityAudit(config.entity, String(detail._id ?? id))
+      const history = await listEntityAudit(config.entity, String(detail._id ?? id)).catch(() => ({ data: [] as AuditEvent[] }))
       setRecord(detail)
-      setAudit(history.data)
+      setAudit(history.data ?? [])
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Record could not be loaded.')
     } finally {
@@ -64,10 +71,11 @@ export function RecordDetailPage() {
 
   if (!config) return <div className="not-found-card"><h1>Record type not found</h1><Button onClick={() => navigate(-1)}>Go back</Button></div>
   if (loading) return <div className="page-loading">Loading {config.title.toLowerCase()}…</div>
-  if (error || !record) return <div className="not-found-card"><span><FileText size={22} /></span><h1>Record unavailable</h1><p>{error ?? 'The record was not found or you do not have access.'}</p><Button variant="outline" onClick={() => navigate(config.back)}>Go back</Button></div>
+  if (error || !record) return <div className="not-found-card"><span><FileText size={22} /></span><h1>Record unavailable</h1><p>{error ?? 'The record was not found or you do not have access.'}</p><div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><Button variant="outline" onClick={() => void load()}>Retry</Button><Button variant="outline" onClick={() => navigate(config.back)}>Go back</Button></div></div>
 
   const entries = Object.entries(record).filter(([key]) => !['_id', '__v'].includes(key))
   const title = display(record.name ?? record.customer ?? record.reference ?? record.customerNumber ?? record._id)
+  const editTo = config.editPath?.(id)
 
   return <div className="detail-page">
     <div className="page-heading detail-page-heading">
@@ -78,6 +86,7 @@ export function RecordDetailPage() {
       </div>
       <div className="heading-actions">
         <Button variant="outline" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
+        {editTo ? <Button icon={Pencil} onClick={() => navigate(editTo)}>Edit</Button> : null}
         <Button variant="outline" icon={Download} onClick={() => toast.info('Use the available report export for structured downloads.')}>Export</Button>
       </div>
     </div>

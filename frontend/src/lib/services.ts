@@ -333,6 +333,32 @@ export const api = {
     return mapCustomer(record)
   },
 
+  updateCustomer: async (id: string, input: Partial<Customer> & { version: number }) => {
+    const bId = branchId()
+    const record = await apiRequest<BackendCustomer>(`/api/v1/customers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        version: input.version,
+        ...(bId ? { branchId: bId } : {}),
+        name: input.name,
+        phone: input.phone,
+        email: input.email,
+        address: input.address,
+        district: input.district,
+        idType: input.idType,
+        nationalId: input.nationalId,
+        occupation: input.occupation,
+        employer: input.employer,
+        monthlyIncomeMinor: toMinor(Number(input.monthlyIncome ?? 0)),
+        nextOfKin: input.nextOfKin,
+        nextOfKinRelationship: input.nextOfKinRelationship,
+        nextOfKinPhone: input.nextOfKinPhone,
+        dateOfBirth: input.dateOfBirth,
+      }),
+    })
+    return mapCustomer(record)
+  },
+
   createProduct: async (input: Partial<LoanProduct>) => {
     const record = await apiRequest<BackendProduct>('/api/v1/loan-products', {
       method: 'POST',
