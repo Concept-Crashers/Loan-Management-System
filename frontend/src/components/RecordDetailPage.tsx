@@ -38,6 +38,7 @@ function isSensitiveField(key: string) {
   return sensitiveFields.has(key.replace(/[_\s-]/g, '').toLowerCase())
 }
 
+const ugx = (m: unknown) => typeof m === 'number' ? `UGX ${(m/100).toLocaleString()}` : '—'
 export function RecordDetailPage() {
   const { id = '' } = useParams()
   const location = useLocation()
@@ -52,6 +53,7 @@ export function RecordDetailPage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [edit, setEdit] = useState({ amount: '', duration: '', purpose: '', income: '', obligations: '' })
+  const [statement, setStatement] = useState<Record<string, any> | null>(null)
   const normalizedRole = role.replace(/\s/g, '').toLowerCase()
   const canViewSensitive = !['cashier', 'collectionsofficer'].includes(normalizedRole)
 
@@ -66,6 +68,7 @@ export function RecordDetailPage() {
       setAudit(history.data ?? [])
       const minor = (k: string) => { const v = detail[k]; return typeof v === 'number' ? String(v / 100) : '' }
       setEdit({ amount: minor('amountMinor'), duration: String(detail.tenureMonths ?? ''), purpose: String(detail.purpose ?? ''), income: minor('incomeMinor'), obligations: minor('obligationsMinor') })
+      if (config.endpoint === 'loans') { try { const { getLoanStatement } = await import('../lib/api'); setStatement(await getLoanStatement(String(detail._id ?? id))) } catch { setStatement(null) } } else setStatement(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Record could not be loaded.')
     } finally {
@@ -118,6 +121,14 @@ export function RecordDetailPage() {
       {!canViewSensitive && <div className="access-warning"><LockKeyhole size={15} /> Sensitive financial and identification values are masked for the {role} demo role. The backend must enforce authorization on every request.</div>}
     </Card>
     {editing && canEditApplication && <Card className="detail-info-card"><div className="detail-card-head"><h2><Pencil size={16} /> Edit application</h2></div><div className="form-grid"><Field label="Requested amount (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} /></Field><Field label="Duration (months)"><Input type="number" min="1" step="1" value={edit.duration} onChange={(e) => setEdit({ ...edit, duration: e.target.value })} /></Field><Field label="Monthly income (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.income} onChange={(e) => setEdit({ ...edit, income: e.target.value })} /></Field><Field label="Monthly obligations (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.obligations} onChange={(e) => setEdit({ ...edit, obligations: e.target.value })} /></Field><Field label="Purpose" className="field-span-2"><Textarea rows={3} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></Field></div><div className="dialog-actions"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button loading={saving} onClick={() => void saveApplication()}>Save changes</Button></div></Card>}
+
+    {segment === 'loans' && statement && <Card className="detail-info-card"><div className="detail-card-head"><h2><FileText size={16} /> Loan statement</h2></div>
+      <div className="info-grid">{[['Principal', ugx((statement.summary as any)?.principalMinor)], ['Confirmed paid', ugx((statement.summary as any)?.confirmedPaidMinor)], ['Outstanding principal', ugx((statement.summary as any)?.outstandingPrincipalMinor)], ['Outstanding interest', ugx((statement.summary as any)?.outstandingInterestMinor)], ['Outstanding fees', ugx((statement.summary as any)?.outstandingFeesMinor)], ['Total outstanding', ugx((statement.summary as any)?.outstandingMinor)]].map(([k,v]) => <div key={String(k)}><span>{k}</span><strong>{v as string}</strong></div>)}</div>
+      <div className="detail-card-head" style={{marginTop:12}}><h3>Repayment schedule</h3></div>
+      <div className="table-scroll"><table className="lf-table"><thead><tr><th>#</th><th>Due date</th><th>Total</th><th>Status</th></tr></thead><tbody>{((statement.schedule as any[])||[]).map((r:any)=><tr key={r._id??r.installmentNumber}><td>{r.installmentNumber}</td><td>{String(r.dueDate??'').slice(0,10)}</td><td>{ugx(r.totalMinor)}</td><td><StatusBadge status={String(r.status??'pending')} /></td></tr>)}{!((statement.schedule as any[])||[]).length && <tr><td colSpan={4}>No schedule</td></tr>}</tbody></table></div>
+      <div className="detail-card-head" style={{marginTop:12}}><h3>Payments (including partial/daily)</h3></div>
+      <div className="table-scroll"><table className="lf-table"><thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{((statement.payments as any[])||[]).map((p:any)=><tr key={p._id??p.reference}><td>{String(p.createdAt??'').slice(0,10)}</td><td className="mono-text">{p.reference}</td><td>{ugx(p.amountMinor)}</td><td>{p.method}</td><td><StatusBadge status={p.status==='confirmed'?'Successful':p.status==='pending_verification'?'Pending review':String(p.status)} /></td></tr>)}{!((statement.payments as any[])||[]).length && <tr><td colSpan={5}>No payments recorded</td></tr>}</tbody></table></div>
+    </Card>}
     <Card className="detail-info-card">
       <div className="detail-card-head"><h2><ShieldCheck size={16} /> Audit history</h2></div>
       {audit.length ? <div className="activity-list">{audit.map((event) => <div className="activity-row" key={event._id}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{event.action}</strong><small>{event.entityType} · {event.entityId} · by {event.actorId}</small></span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</div> : <div className="table-empty"><strong>No audit events recorded</strong><p>History will appear after a server-side action.</p></div>}

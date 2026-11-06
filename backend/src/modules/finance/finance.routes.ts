@@ -18,10 +18,25 @@ async function openPeriod(tenantId: string, branchId: string, at = new Date()) {
 }
 router.get('/loans/:id', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber').lean()
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
   if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
   assertBranchAccess(request, loan.branchId)
   response.json({ success: true, message: 'Loan account retrieved successfully', data: loan })
+}))
+
+router.get('/loans/:id/statement', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
+  if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
+  assertBranchAccess(request, loan.branchId)
+  const [schedule, payments, disbursements] = await Promise.all([
+    RepaymentScheduleModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ installmentNumber: 1 }).lean(),
+    PaymentModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
+    DisbursementModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
+  ])
+  const outstandingMinor = Number(loan.outstandingPrincipalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0)
+  const paidMinor = payments.filter((p) => p.status === 'confirmed').reduce((s, p) => s + Number(p.amountMinor ?? 0), 0)
+  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), outstandingPrincipalMinor: Number(loan.outstandingPrincipalMinor ?? 0), outstandingInterestMinor: Number(loan.outstandingInterestMinor ?? 0), outstandingFeesMinor: Number(loan.outstandingFeesMinor ?? 0), outstandingMinor, confirmedPaidMinor: paidMinor } } })
 }))
 router.get('/payments/:id', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)

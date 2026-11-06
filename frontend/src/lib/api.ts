@@ -198,6 +198,10 @@ export function getRecordDetail(kind: 'customers' | 'products' | 'applications' 
   return apiRequest<Record<string, unknown>>(`/api/v1/${kind === 'payments' ? 'finance/payments' : kind === 'loans' ? 'finance/loans' : kind}/${encodeURIComponent(id)}`)
 }
 
+export function getLoanStatement(id: string) {
+  return apiRequest<Record<string, unknown>>(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement`)
+}
+
 export async function restoreSession() {
   if (!await refreshAccessToken()) return null
   authenticatedUser = await apiRequest<AuthUser>('/api/v1/auth/me', {}, false)
