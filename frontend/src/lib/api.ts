@@ -98,7 +98,7 @@ export function changePassword(currentPassword: string, newPassword: string) {
   return apiRequest<null>('/api/v1/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
 }
 
-export function updateProfile(input: { name?: string; phone?: string }) {
+export function updateProfile(input: { name?: string; phone?: string; email?: string }) {
   return apiRequest<AuthUser>('/api/v1/auth/me', { method: 'PATCH', body: JSON.stringify(input) })
 }
 

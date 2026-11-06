@@ -33,9 +33,10 @@ export function ProfileSecurityPage() {
   async function saveProfile() {
     setSavingProfile(true)
     try {
-      const updated = await updateProfile({ name, phone })
+      const updated = await updateProfile({ name, phone, email })
       dispatch(setUser(updated))
-      toast.success('Profile saved', { description: 'Your name and phone were updated on the server.' })
+      setEmail(updated.email ?? email)
+      toast.success('Profile saved', { description: 'Your profile was updated on the server. Use your new email next time you sign in.' })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Profile could not be saved.')
     } finally { setSavingProfile(false) }
@@ -89,7 +90,7 @@ export function ProfileSecurityPage() {
     <div className="settings-tab-content profile-security-grid">
       <Card className="settings-panel">
         <div className="settings-panel-header"><div className="settings-panel-icon"><ShieldCheck size={18} /></div><div><h2>Personal details</h2><p>Information shown to colleagues and on activity records.</p></div></div>
-        <div className="settings-form-grid"><Field label="Full name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Work email"><IconInput icon={ShieldCheck} type="email" value={email} disabled title="Email is managed by an administrator" /></Field><Field label="Phone number"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+256..." /></Field><Field label="Role"><Select value={user?.roles?.[0] ?? ''} disabled><option>{user?.roles?.join(', ') || '—'}</option></Select></Field></div>
+        <div className="settings-form-grid"><Field label="Full name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Work email"><IconInput icon={ShieldCheck} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></Field><Field label="Phone number"><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+256..." /></Field><Field label="Role"><Select value={user?.roles?.[0] ?? ''} disabled><option>{user?.roles?.join(', ') || '—'}</option></Select></Field></div>
         <div className="settings-panel-footer"><span>Updates your account on the server.</span><Button icon={Save} loading={savingProfile} onClick={() => void saveProfile()}>Save changes</Button></div>
       </Card>
 

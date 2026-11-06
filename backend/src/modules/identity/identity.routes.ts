@@ -170,9 +170,15 @@ router.get('/me', requireAuth, asyncRoute(async (request: AuthRequest, response)
 }))
 
 router.patch('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ name: z.string().min(2).max(120).optional(), phone: z.string().max(40).optional() }).parse(request.body)
+  const input = z.object({ name: z.string().min(2).max(120).optional(), phone: z.string().max(40).optional(), email: z.email().optional() }).parse(request.body)
   const identity = await IdentityModel.findById(request.user?.id)
   if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
+  if (input.email !== undefined && input.email.toLowerCase() !== identity.email) {
+    const exists = await IdentityModel.findOne({ tenantId: identity.tenantId, email: input.email.toLowerCase(), _id: { $ne: identity._id } }).lean()
+    if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+    identity.email = input.email.toLowerCase()
+    ;(identity as any).emailVerifiedAt = undefined
+  }
   if (input.name !== undefined) identity.name = input.name
   if (input.phone !== undefined) (identity as any).phone = input.phone
   await identity.save()
