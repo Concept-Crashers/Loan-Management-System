@@ -30,13 +30,13 @@ export function ApplicationWizard() {
   const navigate = useNavigate()
   const { control, register, watch, trigger, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { customerId: '', product: '', amount: 0, duration: 12, frequency: 'Monthly', purpose: '', income: 0, obligations: 0, termsConfirmed: false } })
   const selectedId = watch('customerId'), selectedProduct = watch('product')
-  const borrower = customers.find((person) => person.id === selectedId)
-  const product = products.find((item) => item.id === selectedProduct)
+  const borrower = customers.find((person) => (person.recordId ?? person.id) === selectedId)
+  const product = products.find((item) => (item.recordId ?? item.id) === selectedProduct)
   const amount = watch('amount')
   const stepFields: (keyof FormInput)[][] = [['customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
   const activeProducts = useMemo(() => products.filter((item) => item.active), [products])
-  const customerOptions = useMemo(() => customers.map((p) => ({ value: p.id, label: `${p.name} · ${p.id}` })), [customers])
-  const productOptions = useMemo(() => (activeProducts.length ? activeProducts : products).map((p) => ({ value: p.id, label: `${p.name}${p.active ? '' : ' (inactive)'} · ${formatUGX(p.minAmount)}–${formatUGX(p.maxAmount)}` })), [activeProducts, products])
+  const customerOptions = useMemo(() => customers.map((p) => ({ value: p.recordId ?? p.id, label: `${p.name} · ${p.id}` })), [customers])
+  const productOptions = useMemo(() => (activeProducts.length ? activeProducts : products).map((p) => ({ value: p.recordId ?? p.id, label: `${p.name}${p.active ? '' : ' (inactive)'} · ${formatUGX(p.minAmount)}–${formatUGX(p.maxAmount)}` })), [activeProducts, products])
 
   async function loadRefData() {
     setLoadingRef(true)

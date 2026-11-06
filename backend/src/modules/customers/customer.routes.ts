@@ -50,7 +50,10 @@ router.post('/', requirePermission('customers.create'), asyncRoute(async (reques
 router.patch('/:id', requirePermission('customers.update'), asyncRoute(async (request: AuthRequest, response) => {
   const input = customerInput.partial().extend({ version: z.number().int().positive() }).parse(request.body)
   const user = currentUser(request)
-  const customer = await CustomerModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  const id = request.params.id
+  const or: Record<string, unknown>[] = [{ customerNumber: id }, { phone: id }]
+  if (mongoose.isValidObjectId(id)) or.push({ _id: id })
+  const customer = await CustomerModel.findOne({ tenantId: user.tenantId, $or: or })
   if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found.')
   if (customer.version !== input.version) throw new HttpError(409, 'STALE_VERSION', 'The customer changed elsewhere. Refresh before saving.')
   if (input.branchId) assertBranchAccess(request, input.branchId)

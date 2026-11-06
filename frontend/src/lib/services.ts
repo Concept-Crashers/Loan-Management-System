@@ -64,8 +64,10 @@ const fromMinor = (value: number | undefined) => (value ?? 0) / 100
 const toMinor = (value: number) => Math.round(value * 100)
 
 function mapCustomer(record: BackendCustomer): Customer {
+  const mongoId = identifier(record)
   return {
-    id: record.customerNumber ?? identifier(record),
+    id: record.customerNumber ?? mongoId,
+    recordId: mongoId,
     name: record.name,
     phone: record.phone,
     email: record.email ?? '',
@@ -89,8 +91,10 @@ function mapCustomer(record: BackendCustomer): Customer {
 }
 
 function mapProduct(record: BackendProduct): LoanProduct {
+  const mongoId = identifier(record)
   return {
-    id: identifier(record),
+    id: mongoId,
+    recordId: mongoId,
     name: record.name,
     description: `${record.category} loan`,
     minAmount: fromMinor(record.terms?.minAmountMinor),

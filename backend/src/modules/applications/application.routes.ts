@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import mongoose from 'mongoose'
 import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
 import { asyncRoute, HttpError } from '../../core/http.js'
@@ -36,6 +37,7 @@ router.post('/', requirePermission('loans.applications.create'), asyncRoute(asyn
   const parsed = createInput.parse(request.body)
   const user = currentUser(request)
   assertBranchAccess(request, parsed.branchId)
+  if (!mongoose.isValidObjectId(parsed.customerId) || !mongoose.isValidObjectId(parsed.productId)) throw new HttpError(400, 'INVALID_ID', 'Customer or loan product identifier is invalid. Reload the form and try again.')
   const [customer, product] = await Promise.all([CustomerModel.findOne({ _id: parsed.customerId, tenantId: user.tenantId, branchId: parsed.branchId }).lean(), LoanProductModel.findOne({ _id: parsed.productId, tenantId: user.tenantId, status: 'active' }).lean()])
   if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found in the selected branch.')
   if (!product) throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'Active loan product was not found.')
