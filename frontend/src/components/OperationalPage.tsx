@@ -304,6 +304,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               <DropdownMenu.Item className="dropdown-item" onSelect={() => openRow(row)}>
                                 <Eye size={15} /> View details
                               </DropdownMenu.Item>
+                              {path === '/products' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>
+                                  {String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}
+                                </DropdownMenu.Item>
+                              )}
                               {path === '/approvals' && canReview && (
                                 <>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>

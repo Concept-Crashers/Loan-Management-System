@@ -388,6 +388,9 @@ export const api = {
     return mapProduct(record)
   },
 
+  updateProductStatus: (id: string, status: 'active' | 'inactive' | 'draft') =>
+    apiRequest<BackendProduct>(`/api/v1/loan-products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+
   submitApplication: (input: { customerId: string; productId: string; amount: number; duration: number; purpose: string; income: number; obligations: number }) =>
     apiRequest<Application>('/api/v1/applications', {
       method: 'POST',
