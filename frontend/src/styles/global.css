@@ -104,7 +104,7 @@ a { color: inherit; text-decoration: none; }
 .profile-trigger:hover { background: #f6f8fa; }
 .profile-meta { display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .profile-meta strong { color: #4f627b; font-size: 8px; font-weight: 600; }.profile-meta small { color: #9aa5b2; font-size: 7px; }
-.workspace-content { width: 100%; max-width: 1600px; flex: 1; margin: 0 auto; padding: 24px 20px 30px; }
+.workspace-content { width: 100%; max-width: 100%; flex: 1; margin: 0 auto; padding: 24px 28px 30px; }
 .app-footer { display: flex; justify-content: space-between; gap: 15px; padding: 10px 28px 13px; color: #9da8b5; font-size: 8px; }
 .app-footer button { padding: 0; border: 0; color: #6f87a4; background: none; font-size: inherit; }
 .footer-separator { margin: 0 4px; color: #c8ced6; }
