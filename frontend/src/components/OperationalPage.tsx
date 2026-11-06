@@ -11,6 +11,7 @@ import { Avatar, Button, Card, Input, Select, StatusBadge, Textarea } from './ui
 import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
 import { api } from '../lib/services'
+import { getRecordDetail } from '../lib/api'
 
 function displayValue(row: TableRow, column: PageColumn) {
   const value = row[column.key]
@@ -62,6 +63,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [selected, setSelected] = useState<TableRow | null>(null)
   const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
   const [decisionNotes, setDecisionNotes] = useState('')
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -70,8 +72,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const role = useSelector((state: RootState) => state.session.role)
+  const roles = useSelector((state: RootState) => state.session.user?.roles ?? [])
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
-  const canReview = ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
+  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin'].includes(String(r).toLowerCase().replace(/\s+/g, '_')))
+  const canReview = isSuperAdmin || ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
   const navigate = useNavigate()
 
   const loadData = async () => {
@@ -167,18 +171,26 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     else setSelected(row)
   }
 
-  function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
+  async function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
     if (!canReview) {
       toast.error('You do not have permission to decide applications.', { description: 'Only an authorized approver can record an underwriting decision.' })
       return
     }
     setDecisionNotes('')
-    setDecisionRequest({ row, decision })
+    try {
+      const fresh = await getRecordDetail('applications', String(row.id)) as any
+      const merged = { ...row, version: Number(fresh?.version ?? row.version ?? 1), status: String(fresh?.status ?? row.status ?? '') }
+      setDecisionRequest({ row: merged, decision })
+    } catch {
+      setDecisionRequest({ row, decision })
+      toast.info('Could not refresh application version; using the current row.')
+    }
   }
 
   async function confirmDecision() {
-    if (!decisionRequest) return
+    if (!decisionRequest || decisionSubmitting) return
     const { row, decision } = decisionRequest
+    setDecisionSubmitting(true)
     try {
       await api.decideApplication(
         String(row.id),
@@ -188,9 +200,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       )
       toast.success(`Application ${decision === 'approve' ? 'approved' : 'rejected'} successfully`)
       setDecisionRequest(null)
-      void loadData()
+      await loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Decision could not be recorded.')
+    } finally {
+      setDecisionSubmitting(false)
     }
   }
 
@@ -311,8 +325,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/approvals' && canReview && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>
-                                  <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => requestDecision(row, 'reject')}>× Reject</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => void requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => void requestDecision(row, 'reject')}>× Reject</DropdownMenu.Item>
                                 </>
                               )}
                               {path === '/collections' && (
@@ -388,13 +402,13 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         <DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application`} description="Submit an underwriting decision to the server." className="record-dialog">
           <div className="followup-note">
             <span>Application</span>
-            <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')}</p>
+            <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')} · status: {String(decisionRequest?.row.status ?? '—')} · v{String(decisionRequest?.row.version ?? 1)}</p>
             <span>Decision notes</span>
             <Textarea rows={4} value={decisionNotes} placeholder="Reason or underwriting conditions..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} />
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" onClick={() => setDecisionRequest(null)}>Cancel</Button>
-            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} onClick={confirmDecision}>
+            <Button variant="outline" disabled={decisionSubmitting} onClick={() => setDecisionRequest(null)}>Cancel</Button>
+            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
           </div>
