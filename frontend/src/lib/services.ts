@@ -195,22 +195,26 @@ export const api = {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/payments')
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => {
-      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as { _id?: string; customerId?: { name?: string; _id?: string } }) : null
+      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as { _id?: string; ref?: string; customerId?: { name?: string; _id?: string } }) : null
       const customerObj = loanObj && typeof loanObj.customerId === 'object' ? loanObj.customerId : null
+      const rid = String(record._id ?? record.id ?? record.reference ?? '')
       return {
-        id: String(record.reference ?? record._id ?? record.id ?? ''),
-        customer: customerObj?.name ?? String(record.customer ?? ''),
+        id: rid,
+        recordId: String(record._id ?? record.id ?? ''),
+        customer: String(record.customer ?? customerObj?.name ?? ''),
         customerId: customerObj?._id ? String(customerObj._id) : String(record.customerId ?? ''),
-        loan: String(loanObj?._id ?? record.loanAccountId ?? ''),
+        loan: String((loanObj as any)?.ref ?? loanObj?._id ?? record.loanAccountId ?? ''),
         amount: fromMinor(Number(record.amountMinor ?? 0)),
-        method: String(record.method ?? 'Cash') as Repayment['method'],
+        method: String(record.method ?? 'Manual') as Repayment['method'],
+        date: String(record.createdAt ?? record.date ?? '').slice(0, 10),
         reference: String(record.reference ?? ''),
-        date: String(record.createdAt ?? '').slice(0, 10),
-        receivedBy: String(record.confirmedBy ?? 'Cashier'),
+        receivedBy: String(record.confirmedBy ?? '—'),
         status: record.status === 'reversed' ? 'Reversed' : record.status === 'confirmed' ? 'Successful' : 'Pending review',
       }
     })
   },
+
+  confirmRepayment: (id: string) => apiRequest<any>(`/api/v1/finance/payments/${encodeURIComponent(id)}/confirm`, { method: 'POST' }),
 
   listSchedules: async (): Promise<ScheduleInstallment[]> => {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/schedules')
@@ -419,11 +423,19 @@ export const api = {
       }),
     }),
 
-  recordDisbursement: (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string }) =>
-    apiRequest<{ account: { ref?: string; _id?: string }; transaction: unknown }>('/api/v1/finance/disbursements', {
-      method: 'POST',
-      body: JSON.stringify({ loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }),
-    }),
+  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string }) => {
+    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }
+    const auth = await apiRequest<any>('/api/v1/finance/disbursements', { method: 'POST', body: JSON.stringify(payload) })
+    const authId = auth?.id ?? auth?._id ?? auth?.data?.id ?? auth?.data?._id
+    if (!authId) return auth
+    try {
+      return await apiRequest<any>(`/api/v1/finance/disbursements/${encodeURIComponent(String(authId))}/execute`, { method: 'POST' })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (/already|completed|exists/i.test(msg)) return auth
+      throw e
+    }
+  },
 
   recordRepayment: (input: { loanAccountId: string; amount: number; method: string; reference: string; branchId?: string }) =>
     apiRequest<Repayment>('/api/v1/finance/payments', {

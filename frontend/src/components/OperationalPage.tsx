@@ -104,7 +104,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(pending.map((item) => ({ ref: item.ref, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement' })))
       } else if (path === '/repayments') {
         const rows = await api.listRepayments()
-        setRemoteRows(rows.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
+        setRemoteRows(rows.map((item) => ({ id: item.id, recordId: item.recordId ?? item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
       } else if (path === '/schedules') {
         const rows = await api.listSchedules()
         setRemoteRows(rows.map((item) => ({ id: item.id, due: item.due, customer: item.customer, loan: item.loan, expected: item.expected, paid: item.paid, officer: item.officer, status: item.status })))
@@ -322,6 +322,9 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                 <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>
                                   {String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}
                                 </DropdownMenu.Item>
+                              )}
+                              {path === '/repayments' && String(row.status ?? '') === 'Pending review' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</DropdownMenu.Item>
                               )}
                               {path === '/approvals' && canReview && (
                                 <>
