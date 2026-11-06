@@ -5,6 +5,7 @@ const identitySchema = new Schema({
   email: { type: String, required: true, lowercase: true, trim: true },
   passwordHash: { type: String, required: true, select: false },
   name: { type: String, required: true },
+  phone: { type: String, default: '' },
   branchIds: { type: [String], default: [] },
   roles: { type: [String], default: [] },
   permissions: { type: [String], default: [] },

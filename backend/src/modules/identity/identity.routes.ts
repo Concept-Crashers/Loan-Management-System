@@ -49,8 +49,8 @@ function validTotp(secret: string, input: string) {
   })
 }
 
-function publicUser(identity: { id: string; name?: string; email?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] }): AuthUser {
-  return { id: identity.id, name: identity.name, email: identity.email, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
+function publicUser(identity: { id: string; name?: string; email?: string; phone?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[]; mfaEnabled?: boolean }): AuthUser & { mfaEnabled?: boolean; phone?: string } {
+  return { id: identity.id, name: identity.name, email: identity.email, phone: identity.phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }
 }
 
 router.post('/login', asyncRoute(async (request, response) => {
@@ -67,7 +67,7 @@ router.post('/login', asyncRoute(async (request, response) => {
     throw new HttpError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.')
   }
   if (identity.mfaEnabled && (!input.mfaCode || !identity.mfaSecret || !validTotp(decryptSecret(identity.mfaSecret), input.mfaCode))) throw new HttpError(401, 'MFA_REQUIRED', 'A valid MFA code is required.')
-  const user: AuthUser = publicUser({ id: identity.id, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions })
+  const user = publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled })
   const accessToken = signAccessToken(user)
   const refreshToken = jwt.sign({ sub: identity.id }, env.JWT_REFRESH_SECRET, { expiresIn: env.REFRESH_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
   identity.refreshTokenHash = await bcrypt.hash(refreshToken, 12)
@@ -164,7 +164,19 @@ router.post('/verify-email', asyncRoute(async (request, response) => {
 }))
 
 router.get('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
-  response.json({ success: true, message: 'Identity retrieved successfully', data: request.user })
+  const identity = await IdentityModel.findById(request.user?.id).lean()
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
+  response.json({ success: true, message: 'Identity retrieved successfully', data: publicUser({ id: String(identity._id), name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds ?? [], roles: identity.roles ?? [], permissions: identity.permissions ?? [], mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.patch('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), phone: z.string().max(40).optional() }).parse(request.body)
+  const identity = await IdentityModel.findById(request.user?.id)
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
+  if (input.name !== undefined) identity.name = input.name
+  if (input.phone !== undefined) (identity as any).phone = input.phone
+  await identity.save()
+  response.json({ success: true, message: 'Profile updated successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
 }))
 
 router.post('/logout', requireAuth, asyncRoute(async (request: AuthRequest, response) => {

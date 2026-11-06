@@ -16,6 +16,12 @@ const settingsSchema = new Schema({
     secondaryColor: { type: String, default: '#0f172a' },
     currency: { type: String, default: 'UGX' },
   },
+  preferences: {
+    defaultBranchId: { type: String, default: '' },
+    defaultRepaymentFrequency: { type: String, default: 'Monthly' },
+    receiptReferenceFormat: { type: String, default: 'RCT-{YYYY}-{SEQ}' },
+    notifications: { type: Schema.Types.Mixed, default: {} },
+  },
   updatedBy: { type: String },
 }, { timestamps: true })
 

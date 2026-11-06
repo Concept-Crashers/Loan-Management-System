@@ -6,10 +6,12 @@ export interface AuthUser {
   id: string
   name?: string
   email?: string
+  phone?: string
   tenantId: string
   branchIds: string[]
   roles: string[]
   permissions: string[]
+  mfaEnabled?: boolean
 }
 
 type ApiEnvelope<T> = { success: boolean; message: string; data: T; code?: string; errors?: unknown[] }
@@ -92,9 +94,22 @@ export function disableMfa(code: string) {
   return apiRequest<null>('/api/v1/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ code }) })
 }
 
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiRequest<null>('/api/v1/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
+}
+
+export function updateProfile(input: { name?: string; phone?: string }) {
+  return apiRequest<AuthUser>('/api/v1/auth/me', { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export function getMe() {
+  return apiRequest<AuthUser>('/api/v1/auth/me')
+}
+
 export interface OrganisationSettings {
   organisation: { name: string; legalName?: string; registrationNumber?: string; address?: string; phone?: string; email?: string }
   branding: { logoUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string }
+  preferences?: { defaultBranchId?: string; defaultRepaymentFrequency?: string; receiptReferenceFormat?: string; notifications?: Record<string, boolean> }
 }
 
 export function getOrganisationSettings() {
