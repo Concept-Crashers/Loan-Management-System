@@ -7,7 +7,7 @@ import { useSelector } from 'react-redux'
 import { formatDate, formatUGX } from '../lib/format'
 import type { TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
-import { Avatar, Button, Card, Input, Select, StatusBadge, Textarea } from './ui/primitives'
+import { Avatar, Button, Card, Field, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
 import { api } from '../lib/services'
@@ -64,6 +64,9 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
   const [decisionNotes, setDecisionNotes] = useState('')
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const [branchModal, setBranchModal] = useState(false)
+  const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '' })
+  const [branchSaving, setBranchSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -220,10 +223,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     }
   }
 
+  async function saveBranch() {
+    if (!branchForm.code.trim() || !branchForm.name.trim() || !branchForm.district.trim()) { toast.error('Enter branch code, name, and district.'); return }
+    setBranchSaving(true)
+    try {
+      await api.createBranch({ code: branchForm.code.trim(), name: branchForm.name.trim(), district: branchForm.district.trim() })
+      toast.success('Branch created')
+      setBranchModal(false); setBranchForm({ code: '', name: '', district: '' }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch could not be created.') } finally { setBranchSaving(false) }
+  }
+
   const headingAction = definition.newTo
     ? <Button onClick={() => navigate(definition.newTo!)}>{definition.newLabel ?? 'Add new'} <span>+</span></Button>
     : definition.newLabel
-      ? <Button onClick={() => navigate('/settings')}>+ {definition.newLabel}</Button>
+      ? <Button onClick={() => path === '/branches' ? setBranchModal(true) : path === '/staff' ? navigate('/staff') : navigate('/settings')}>+ {definition.newLabel}</Button>
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
@@ -414,6 +427,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
             <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={branchModal} onOpenChange={setBranchModal}>
+        <DialogContent title="Add branch" description="Create a branch for this tenant (server-backed)." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Branch code" required><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" /></Field>
+            <Field label="Branch name" required><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Kampala Main" /></Field>
+            <Field label="District" required className="field-span-2"><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={branchSaving} onClick={() => setBranchModal(false)}>Cancel</Button>
+            <Button loading={branchSaving} onClick={() => void saveBranch()}>Create branch</Button>
           </div>
         </DialogContent>
       </Dialog>

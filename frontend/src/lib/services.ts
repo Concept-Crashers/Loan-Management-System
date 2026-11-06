@@ -303,15 +303,18 @@ export const api = {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/branches')
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => ({
-      id: String(record.code ?? record._id ?? ''),
+      id: String(record._id ?? record.id ?? record.code ?? ''),
       name: String(record.name ?? ''),
       district: String(record.district ?? ''),
-      manager: 'Branch Manager',
-      staff: 'Active',
-      activeLoans: '0',
-      status: 'Active',
+      manager: String(record.managerId ?? '—'),
+      staff: String(record.staffCount ?? '0'),
+      activeLoans: String(record.activeLoans ?? '0'),
+      status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
     }))
   },
+
+  createBranch: (input: { code: string; name: string; district: string }) =>
+    apiRequest<BranchRecord>('/api/v1/organisation/branches', { method: 'POST', body: JSON.stringify(input) }),
 
   listAuditLogs: async (): Promise<Array<Record<string, unknown>>> => {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/audit')
