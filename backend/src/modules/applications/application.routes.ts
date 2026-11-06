@@ -79,7 +79,8 @@ router.post('/:id/decision', requirePermission('loans.applications.approve'), as
   assertBranchAccess(request, application.branchId)
   const decidable = ['submitted', 'under_review', 'assessment_required', 'approval_pending']
   if (application.version !== parsed.version || !decidable.includes(application.status)) throw new HttpError(409, 'INVALID_DECISION_STATE', `This application is no longer available for decision (status: ${application.status}, expected version ${application.version}). Refresh approvals and try again.`)
-  if (application.officerId === user.id) throw new HttpError(403, 'SEPARATION_OF_DUTIES', 'The submitting officer cannot decide this application.')
+  const isPrivileged = (user.roles ?? []).some((r) => ['super_admin', 'super-admin', 'superadmin', 'admin'].includes(String(r).toLowerCase().replace(/\s+/g, '_')))
+  if (!isPrivileged && application.officerId === user.id) throw new HttpError(403, 'SEPARATION_OF_DUTIES', 'The submitting officer cannot decide this application.')
   application.status = parsed.decision
   application.version += 1
   application.decisionHistory.push({ actorId: user.id, decision: parsed.decision, reason: parsed.reason, at: new Date() })
