@@ -33,7 +33,7 @@ export function DashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const user = useSelector((state: RootState) => state.session.user)
-  const userFirstName = user?.name ? user.name.split(' ')[0] : 'Team'
+  const userDisplayName = user?.name?.trim() || 'Team'
 
   useEffect(() => {
     async function loadDashboard() {
@@ -98,7 +98,7 @@ export function DashboardPage() {
       <div className="page-heading dashboard-heading">
         <div>
           <div className="eyebrow"><span className="live-spark" /> {todayStr}</div>
-          <h1>Good day, {userFirstName} <span className="wave">✳</span></h1>
+          <h1>Good day, {userDisplayName} <span className="wave">✳</span></h1>
           <p>Portfolio overview connected to production database.</p>
         </div>
         <div className="heading-actions">
