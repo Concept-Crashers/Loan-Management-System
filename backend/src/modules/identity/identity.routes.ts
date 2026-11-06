@@ -201,6 +201,25 @@ router.get('/users', requireAuth, requirePermission('identity.users.view'), asyn
   response.json({ success: true, message: 'Users retrieved successfully', data: users.map((u) => ({ id: String(u._id), name: u.name, email: u.email, phone: (u as any).phone ?? '', roles: u.roles ?? [], branchIds: u.branchIds ?? [], status: u.status })) })
 }))
 
+router.patch('/users/:id', requireAuth, requirePermission('identity.users.update'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), email: z.email().optional(), phone: z.string().max(40).optional(), roles: z.array(z.string()).min(1).optional(), branchIds: z.array(z.string()).optional(), status: z.enum(['active', 'inactive', 'suspended']).optional() }).parse(request.body)
+  const admin = currentUser(request)
+  const identity = await IdentityModel.findOne({ _id: request.params.id, tenantId: admin.tenantId })
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Staff user was not found.')
+  if (input.email !== undefined && input.email.toLowerCase() !== identity.email) {
+    const exists = await IdentityModel.findOne({ tenantId: admin.tenantId, email: input.email.toLowerCase(), _id: { $ne: identity._id } }).lean()
+    if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+    identity.email = input.email.toLowerCase()
+  }
+  if (input.name !== undefined) identity.name = input.name
+  if (input.phone !== undefined) (identity as any).phone = input.phone
+  if (input.roles !== undefined) identity.roles = input.roles
+  if (input.branchIds !== undefined) identity.branchIds = input.branchIds
+  if (input.status !== undefined) (identity as any).status = input.status
+  await identity.save()
+  response.json({ success: true, message: 'Staff user updated successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
+}))
+
 router.post('/logout', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
   await IdentityModel.updateOne({ _id: request.user?.id }, { $unset: { refreshTokenHash: 1 } })
   response.clearCookie('lendflow_refresh', { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', path: '/api/v1/auth' })

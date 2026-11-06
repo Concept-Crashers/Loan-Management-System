@@ -65,11 +65,15 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [decisionNotes, setDecisionNotes] = useState('')
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [branchModal, setBranchModal] = useState(false)
-  const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '' })
+  const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '', managerId: '' })
   const [branchSaving, setBranchSaving] = useState(false)
+  const [staffOptions, setStaffOptions] = useState<Array<{ id: string; name: string }>>([])
   const [staffModal, setStaffModal] = useState(false)
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' })
   const [staffSaving, setStaffSaving] = useState(false)
+  const [editStaff, setEditStaff] = useState<TableRow | null>(null)
+  const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer' })
+  const [editStaffSaving, setEditStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -142,7 +146,13 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
 
   useEffect(() => {
     void loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
+
+  useEffect(() => {
+    if (!branchModal || staffOptions.length) return
+    void api.listStaff().then((rows) => setStaffOptions(rows.map((r) => ({ id: r.id, name: r.name })))).catch(() => {})
+  }, [branchModal, staffOptions.length])
 
   const allRows = remoteRows ?? []
   const filterKey = definition.filterKey
@@ -171,6 +181,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }, [page, pageCount])
 
   function openRow(row: TableRow) {
+    if (path === '/staff' && isSuperAdmin) {
+      setEditStaff(row)
+      setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' })
+      return
+    }
     const key = definition.detailKey ? row[definition.detailKey] : undefined
     if (definition.detailBase && key) navigate(`${definition.detailBase}/${encodeURIComponent(String(key))}`)
     else if (path === '/approvals' && row.id) navigate(`/applications/${encodeURIComponent(String(row.id))}`)
@@ -226,6 +241,16 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     }
   }
 
+  async function saveBranch() {
+    if (!branchForm.code.trim() || !branchForm.name.trim() || !branchForm.district.trim()) { toast.error('Enter branch code, name, and district.'); return }
+    setBranchSaving(true)
+    try {
+      await api.createBranch({ code: branchForm.code.trim(), name: branchForm.name.trim(), district: branchForm.district.trim(), managerId: branchForm.managerId || undefined })
+      toast.success('Branch created')
+      setBranchModal(false); setBranchForm({ code: '', name: '', district: '', managerId: '' }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch could not be created.') } finally { setBranchSaving(false) }
+  }
+
   async function saveStaff() {
     if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 12) { toast.error('Enter name, valid email, and a password with at least 12 characters.'); return }
     setStaffSaving(true)
@@ -234,6 +259,16 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       toast.success('Staff user created')
       setStaffModal(false); setStaffForm({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' }); await loadData()
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be created.') } finally { setStaffSaving(false) }
+  }
+
+  async function saveEditStaff() {
+    if (!editStaff) return
+    setEditStaffSaving(true)
+    try {
+      await api.updateStaffUser(String(editStaff.id), { name: editStaffForm.name.trim() || undefined, email: editStaffForm.email.trim() || undefined, phone: editStaffForm.phone.trim() || undefined, roles: [editStaffForm.roles] })
+      toast.success('Staff user updated')
+      setEditStaff(null); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be updated.') } finally { setEditStaffSaving(false) }
   }
 
   const headingAction = definition.newTo
@@ -435,11 +470,17 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       </Dialog>
 
       <Dialog open={branchModal} onOpenChange={setBranchModal}>
-        <DialogContent title="Add branch" description="Create a branch for this tenant (server-backed)." className="record-dialog">
+        <DialogContent title="Add branch" description="Create a branch and optionally assign a branch manager from staff." className="record-dialog">
           <div className="form-grid" style={{ marginTop: 8 }}>
             <Field label="Branch code" required><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" /></Field>
             <Field label="Branch name" required><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Kampala Main" /></Field>
-            <Field label="District" required className="field-span-2"><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
+            <Field label="District" required><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
+            <Field label="Branch manager">
+              <Select value={branchForm.managerId} onChange={(e) => setBranchForm({ ...branchForm, managerId: e.target.value })}>
+                <option value="">No manager assigned</option>
+                {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </Field>
           </div>
           <div className="dialog-actions">
             <Button variant="outline" disabled={branchSaving} onClick={() => setBranchModal(false)}>Cancel</Button>
@@ -469,6 +510,30 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
           <div className="dialog-actions">
             <Button variant="outline" disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
             <Button loading={staffSaving} onClick={() => void saveStaff()}>Create staff</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editStaff} onOpenChange={(open) => !open && setEditStaff(null)}>
+        <DialogContent title="Edit staff" description="Update staff details and role. To assign a branch manager, create/edit a branch and select this staff member." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Full name"><Input value={editStaffForm.name} onChange={(e) => setEditStaffForm({ ...editStaffForm, name: e.target.value })} /></Field>
+            <Field label="Email"><Input type="email" value={editStaffForm.email} onChange={(e) => setEditStaffForm({ ...editStaffForm, email: e.target.value })} /></Field>
+            <Field label="Phone"><Input value={editStaffForm.phone} onChange={(e) => setEditStaffForm({ ...editStaffForm, phone: e.target.value })} /></Field>
+            <Field label="Role">
+              <Select value={editStaffForm.roles} onChange={(e) => setEditStaffForm({ ...editStaffForm, roles: e.target.value })}>
+                <option value="loan_officer">Loan officer</option>
+                <option value="approver">Approver</option>
+                <option value="manager">Manager</option>
+                <option value="finance">Finance / accounting</option>
+                <option value="collections">Collections</option>
+                <option value="admin">Admin</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={editStaffSaving} onClick={() => setEditStaff(null)}>Cancel</Button>
+            <Button loading={editStaffSaving} onClick={() => void saveEditStaff()}>Save changes</Button>
           </div>
         </DialogContent>
       </Dialog>

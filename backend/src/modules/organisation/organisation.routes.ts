@@ -15,11 +15,27 @@ router.get('/branches', requirePermission('branches.view'), asyncRoute(async (re
   response.json({ success: true, message: 'Branches retrieved successfully', ...result })
 }))
 router.post('/branches', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ code: z.string().min(2), name: z.string().min(2), district: z.string().min(2) }).parse(request.body)
+  const input = z.object({ code: z.string().min(2), name: z.string().min(2), district: z.string().min(2), managerId: z.string().optional() }).parse(request.body)
   const user = currentUser(request)
+  if (input.managerId) {
+    const mgr = await IdentityModel.findOne({ _id: input.managerId, tenantId: user.tenantId }).select('_id').lean()
+    if (!mgr) throw new HttpError(404, 'MANAGER_NOT_FOUND', 'Selected branch manager was not found.')
+  }
   const branch = await BranchModel.create({ ...input, tenantId: user.tenantId })
-  await recordAudit({ user, action: 'branch.created', entityType: 'branch', entityId: branch.id, next: { code: branch.code, name: branch.name } })
+  await recordAudit({ user, action: 'branch.created', entityType: 'branch', entityId: branch.id, next: { code: branch.code, name: branch.name, managerId: branch.managerId } })
   response.status(201).json({ success: true, message: 'Branch created successfully', data: branch })
+}))
+router.patch('/branches/:id', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ code: z.string().min(2).optional(), name: z.string().min(2).optional(), district: z.string().min(2).optional(), managerId: z.string().nullable().optional() }).parse(request.body)
+  const user = currentUser(request)
+  if (input.managerId) {
+    const mgr = await IdentityModel.findOne({ _id: input.managerId, tenantId: user.tenantId }).select('_id').lean()
+    if (!mgr) throw new HttpError(404, 'MANAGER_NOT_FOUND', 'Selected branch manager was not found.')
+  }
+  const branch = await BranchModel.findOneAndUpdate({ _id: request.params.id, tenantId: user.tenantId }, { $set: input }, { new: true })
+  if (!branch) throw new HttpError(404, 'BRANCH_NOT_FOUND', 'Branch was not found.')
+  await recordAudit({ user, action: 'branch.updated', entityType: 'branch', entityId: branch.id, next: input })
+  response.json({ success: true, message: 'Branch updated successfully', data: branch })
 }))
 router.get('/staff', requirePermission('identity.users.view'), asyncRoute(async (request: AuthRequest, response) => {
   const result = await paged(StaffAssignmentModel, { tenantId: currentUser(request).tenantId }, pagination(request), { createdAt: -1 })
