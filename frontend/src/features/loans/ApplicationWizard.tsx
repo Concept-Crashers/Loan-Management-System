@@ -63,10 +63,15 @@ export function ApplicationWizard() {
 
   async function nextStep() { const valid = await trigger(stepFields[step]); if (valid) setStep((value) => Math.min(3, value + 1)) }
   async function submit(values: FormValues) {
-    if (!product) throw new Error('Choose an active loan product.')
-    const record = await api.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
-    toast.success('Application submitted for review', { description: `Reference ${record.id} · server decision pending` })
-    navigate(`/applications/${record.id}`)
+    try {
+      if (!product) throw new Error('Choose an active loan product.')
+      const record = await api.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
+      const ref = (record as any)?.id ?? (record as any)?._id ?? (record as any)?.applicationId ?? (record as any)?.data?.id ?? (record as any)?.data?._id
+      toast.success('Application submitted for review', { description: ref ? `Reference ${String(ref)} · server decision pending` : 'Server decision pending' })
+      navigate(ref ? `/applications/${encodeURIComponent(String(ref))}` : '/applications')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Application could not be submitted.')
+    }
   }
 
   return <div className="form-page"><div className="page-heading"><div><div className="eyebrow"><Link to="/applications"><ChevronLeft size={14} /> APPLICATIONS</Link><span className="eyebrow-separator">/</span> NEW REQUEST</div><h1>New loan application</h1><p>Capture a request clearly before assessment begins.</p></div><span className="draft-status"><span /> Draft</span></div>{loadError && <div className="form-error" role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{loadError}</span><Button type="button" variant="outline" size="sm" icon={RefreshCw} onClick={() => void loadRefData()} loading={loadingRef}>Reload</Button></div>}
