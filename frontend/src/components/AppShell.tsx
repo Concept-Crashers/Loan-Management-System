@@ -35,7 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
   const [searchCustomers, setSearchCustomers] = useState<Customer[]>([])
   const [searchLoans, setSearchLoans] = useState<LoanAccount[]>([])
+  const [brandFontSize, setBrandFontSize] = useState(15)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const brandNameRef = useRef<HTMLElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -65,6 +67,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
+
+  useEffect(() => {
+    const fit = () => {
+      const el = brandNameRef.current
+      if (!el) return
+      let size = 15
+      el.style.fontSize = `${size}px`
+      const max = el.parentElement?.clientWidth ?? el.clientWidth
+      while (el.scrollWidth > max && size > 9) { size -= 0.5; el.style.fontSize = `${size}px` }
+      setBrandFontSize(size)
+    }
+    fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit)
+  }, [branding.companyName])
 
   useEffect(() => {
     if (searchOpen && !searchCustomers.length && !searchLoans.length) {
@@ -102,7 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="brand-lockup">
           {branding.logoDataUrl ? <img className="brand-logo-image" src={branding.logoDataUrl} alt="" /> : <div className="brand-mark"><span /><span /><span /></div>}
-          <div className="brand-copy"><strong>{branding.companyName}</strong><small>{branding.tagline}</small></div>
+          <div className="brand-copy"><strong ref={brandNameRef} style={{ fontSize: `${brandFontSize}px` }} title={branding.companyName}>{branding.companyName}</strong><small>{branding.tagline}</small></div>
           <button className="mobile-close" onClick={() => dispatch(closeSidebar())} aria-label="Close menu"><X size={18} /></button>
         </div>
         <div className="branch-switcher">

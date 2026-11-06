@@ -187,7 +187,7 @@ export function exportPortfolioSummary() {
 export function exportLedger(params: { branchId?: string; periodId?: string; account?: string } = {}) {
   return downloadFinanceCsv(`/api/v1/finance/ledger/export${queryString(params)}`, 'general-ledger.csv')
 }
-export type AuditEvent = { _id: string; action: string; entityType: string; entityId: string; actorId: string; branchId?: string; previous?: unknown; next?: unknown; createdAt: string }
+export type AuditEvent = { _id: string; action: string; entityType: string; entityId: string; actorId: string; actorName?: string; detail?: string; branchId?: string; previous?: unknown; next?: unknown; createdAt: string }
 export function listAuditEvents(page = 1, params: { entityType?: string; branchId?: string } = {}) {
   return apiRequest<PagedResult<AuditEvent>>(`/api/v1/audit${queryString({ page, pageSize: 25, ...params })}`)
 }
