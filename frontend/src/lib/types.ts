@@ -37,7 +37,7 @@ export interface LoanProduct {
   interestRate: number
   interestMethod?: string
   duration: number
-  frequency: 'Weekly' | 'Bi-weekly' | 'Monthly'
+  frequency: 'Daily' | 'Weekly' | 'Bi-weekly' | 'Monthly'
   gracePeriod?: number
   fees?: string
   lateRule?: string

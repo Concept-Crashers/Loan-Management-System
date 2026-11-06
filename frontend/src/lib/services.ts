@@ -34,7 +34,7 @@ type BackendProduct = {
     maxAmountMinor: number
     annualRateBps: number
     interestMethod: 'flat' | 'declining_balance'
-    repaymentFrequency: 'weekly' | 'biweekly' | 'monthly'
+    repaymentFrequency: 'daily' | 'weekly' | 'biweekly' | 'monthly'
     minTenureMonths: number
     maxTenureMonths: number
     gracePeriodDays: number
@@ -102,7 +102,7 @@ function mapProduct(record: BackendProduct): LoanProduct {
     interestRate: (record.terms?.annualRateBps ?? 0) / 100,
     interestMethod: record.terms?.interestMethod ?? 'flat',
     duration: record.terms?.maxTenureMonths ?? 12,
-    frequency: record.terms?.repaymentFrequency === 'biweekly' ? 'Bi-weekly' : record.terms?.repaymentFrequency === 'weekly' ? 'Weekly' : 'Monthly',
+    frequency: record.terms?.repaymentFrequency === 'daily' ? 'Daily' : record.terms?.repaymentFrequency === 'biweekly' ? 'Bi-weekly' : record.terms?.repaymentFrequency === 'weekly' ? 'Weekly' : 'Monthly',
     gracePeriod: record.terms?.gracePeriodDays ?? 0,
     requiredDocuments: (record.terms?.requiredDocuments ?? []).join(', '),
     active: record.status === 'active',
@@ -376,7 +376,7 @@ export const api = {
           maxAmountMinor: toMinor(Number(input.maxAmount ?? 0)),
           annualRateBps: Math.round(Number(input.interestRate ?? 0) * 100),
           interestMethod: /flat/i.test(input.interestMethod ?? '') ? 'flat' : 'declining_balance',
-          repaymentFrequency: input.frequency === 'Weekly' ? 'weekly' : input.frequency === 'Bi-weekly' ? 'biweekly' : 'monthly',
+          repaymentFrequency: input.frequency === 'Daily' ? 'daily' : input.frequency === 'Weekly' ? 'weekly' : input.frequency === 'Bi-weekly' ? 'biweekly' : 'monthly',
           minTenureMonths: 1,
           maxTenureMonths: Number(input.duration ?? 1),
           gracePeriodDays: Number(input.gracePeriod ?? 0),

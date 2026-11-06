@@ -3,7 +3,7 @@ import { model, Schema } from 'mongoose'
 const termsSchema = new Schema({
   minAmountMinor: { type: Number, required: true, min: 0 }, maxAmountMinor: { type: Number, required: true, min: 0 },
   annualRateBps: { type: Number, required: true, min: 0 }, interestMethod: { type: String, enum: ['flat', 'declining_balance'], required: true },
-  repaymentFrequency: { type: String, enum: ['weekly', 'biweekly', 'monthly'], required: true },
+  repaymentFrequency: { type: String, enum: ['daily', 'weekly', 'biweekly', 'monthly'], required: true },
   minTenureMonths: { type: Number, required: true, min: 1 }, maxTenureMonths: { type: Number, required: true, min: 1 },
   gracePeriodDays: { type: Number, required: true, min: 0 }, fees: { type: [Schema.Types.Mixed], default: [] }, requiredDocuments: { type: [String], default: [] },
 }, { _id: false })
