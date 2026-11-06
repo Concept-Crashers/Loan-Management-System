@@ -396,7 +396,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/branches' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditBranch(row); setBranchForm({ code: String(row.id ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: '' }); setBranchModal(true) }}>Edit branch</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditBranch(row); setBranchForm({ code: String((row as any).code ?? row.id ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: String((row as any).managerId ?? '') }); setBranchModal(true) }}>Edit branch</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                                 </>
                               )}
