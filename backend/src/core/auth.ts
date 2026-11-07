@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { IdentityModel } from '../modules/identity/identity.model.js'
+import { RolePermissionModel } from '../modules/identity/role-permission.model.js'
+import { ALL_PERMISSIONS, normalizeRoleName } from '../modules/identity/permissions.js'
 import { env } from '../config/env.js'
 import { HttpError } from './http.js'
 
@@ -11,6 +13,24 @@ export function signAccessToken(user: AuthUser) {
   return jwt.sign({ sub: user.id, name: user.name, email: user.email, tenantId: user.tenantId, branchIds: user.branchIds, roles: user.roles, permissions: user.permissions }, env.JWT_ACCESS_SECRET, { expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
 }
 
+function isOverallAdmin(roles: string[] = []) {
+  const norm = (r: unknown) => normalizeRoleName(String(r ?? ''))
+  return roles.some((r) => ['super_admin', 'superadmin'].includes(norm(r)))
+}
+
+function isPrivileged(roles: string[] = []) {
+  const norm = (r: unknown) => normalizeRoleName(String(r ?? ''))
+  return roles.some((r) => ['super_admin', 'superadmin'].includes(norm(r)))
+}
+
+async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
+  if (isPrivileged(roles)) return ['*', ...ALL_PERMISSIONS]
+  const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
+  if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
+  const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
+  return [...new Set([...(explicit ?? []), ...mapped.flatMap((m) => (m.permissions ?? []).filter(Boolean))].filter(Boolean))]
+}
+
 export async function requireAuth(request: AuthRequest, _response: Response, next: NextFunction) {
   const header = request.header('authorization')
   if (!header?.startsWith('Bearer ')) return next(new HttpError(401, 'UNAUTHENTICATED', 'Authentication is required.'))
@@ -19,7 +39,8 @@ export async function requireAuth(request: AuthRequest, _response: Response, nex
     if (typeof payload.sub !== 'string') throw new Error('Invalid subject')
     const identity = await IdentityModel.findById(payload.sub).select('name email tenantId branchIds roles permissions status').lean()
     if (!identity || identity.status !== 'active') throw new Error('Inactive identity')
-    request.user = { id: identity._id.toString(), name: identity.name, email: identity.email, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
+    const permissions = await resolveEffectivePermissions(identity.tenantId, identity.roles ?? [], identity.permissions ?? [])
+    request.user = { id: identity._id.toString(), name: identity.name, email: identity.email, tenantId: identity.tenantId, branchIds: identity.branchIds ?? [], roles: identity.roles ?? [], permissions }
     next()
   } catch {
     next(new HttpError(401, 'INVALID_TOKEN', 'The access token is invalid or expired.'))
@@ -28,10 +49,9 @@ export async function requireAuth(request: AuthRequest, _response: Response, nex
 
 export function requirePermission(permission: string) {
   return (request: AuthRequest, _response: Response, next: NextFunction) => {
-    const roles = request.user?.roles ?? []
-    const norm = (r: unknown) => String(r).toLowerCase().replace(/[\s-]+/g, '_')
-    if (roles.some((r) => ['super_admin', 'superadmin', 'admin'].includes(norm(r)))) return next()
-    if (!request.user?.permissions.includes(permission)) return next(new HttpError(403, 'FORBIDDEN', 'You do not have permission to perform this action.'))
-    next()
+    if (isPrivileged(request.user?.roles ?? [])) return next()
+    const permissions = request.user?.permissions ?? []
+    if (permissions.includes('*') || permissions.includes(permission)) return next()
+    return next(new HttpError(403, 'FORBIDDEN', 'You do not have permission to perform this action.'))
   }
 }

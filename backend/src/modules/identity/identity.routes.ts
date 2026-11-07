@@ -8,7 +8,10 @@ import { HttpError, asyncRoute } from '../../core/http.js'
 import { signAccessToken, type AuthUser, requireAuth, type AuthRequest, requirePermission } from '../../core/auth.js'
 import { currentUser } from '../../core/scope.js'
 import { IdentityModel } from './identity.model.js'
+import { RolePermissionModel } from './role-permission.model.js'
+import { ALL_PERMISSIONS, DEFAULT_ROLES, PERMISSION_GROUPS, displayRoleName, normalizeRoleName } from './permissions.js'
 import { emailProvider } from '../../infrastructure/messaging/providers.js'
+import { recordAudit } from '../audit/audit.service.js'
 
 const router = Router()
 const loginSchema = z.object({ email: z.email(), password: z.string().min(1), mfaCode: z.string().optional() })
@@ -50,6 +53,15 @@ function validTotp(secret: string, input: string) {
   })
 }
 
+async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
+  const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
+  const privileged = normalized.some((r) => ['super_admin', 'superadmin'].includes(r))
+  if (privileged) return ['*', ...ALL_PERMISSIONS]
+  if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
+  const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions').lean()
+  return [...new Set([...(explicit ?? []), ...mapped.flatMap((m) => (m.permissions ?? []).filter(Boolean))].filter(Boolean))]
+}
+
 function publicUser(identity: { id: string; name?: string; email?: string; phone?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[]; mfaEnabled?: boolean }): AuthUser & { mfaEnabled?: boolean; phone?: string } {
   return { id: identity.id, name: identity.name, email: identity.email, phone: identity.phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }
 }
@@ -68,7 +80,8 @@ router.post('/login', asyncRoute(async (request, response) => {
     throw new HttpError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.')
   }
   if (identity.mfaEnabled && (!input.mfaCode || !identity.mfaSecret || !validTotp(decryptSecret(identity.mfaSecret), input.mfaCode))) throw new HttpError(401, 'MFA_REQUIRED', 'A valid MFA code is required.')
-  const user = publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled })
+  const permissions = await resolveEffectivePermissions(identity.tenantId, identity.roles, identity.permissions)
+  const user = publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions, mfaEnabled: identity.mfaEnabled })
   const accessToken = signAccessToken(user)
   const refreshToken = jwt.sign({ sub: identity.id }, env.JWT_REFRESH_SECRET, { expiresIn: env.REFRESH_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
   identity.refreshTokenHash = await bcrypt.hash(refreshToken, 12)
@@ -167,7 +180,8 @@ router.post('/verify-email', asyncRoute(async (request, response) => {
 router.get('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
   const identity = await IdentityModel.findById(request.user?.id).lean()
   if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
-  response.json({ success: true, message: 'Identity retrieved successfully', data: publicUser({ id: String(identity._id), name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds ?? [], roles: identity.roles ?? [], permissions: identity.permissions ?? [], mfaEnabled: identity.mfaEnabled }) })
+  const permissions = await resolveEffectivePermissions(identity.tenantId, identity.roles ?? [], identity.permissions ?? [])
+  response.json({ success: true, message: 'Identity retrieved successfully', data: publicUser({ id: String(identity._id), name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds ?? [], roles: identity.roles ?? [], permissions, mfaEnabled: identity.mfaEnabled }) })
 }))
 
 router.patch('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
@@ -239,7 +253,8 @@ router.post('/refresh', asyncRoute(async (request, response) => {
   if (typeof payload.sub !== 'string') throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'The refresh token is invalid.')
   const identity = await IdentityModel.findById(payload.sub).select('+refreshTokenHash')
   if (!identity?.refreshTokenHash || !await bcrypt.compare(token, identity.refreshTokenHash) || identity.status !== 'active') throw new HttpError(401, 'REVOKED_REFRESH_TOKEN', 'The refresh token has been revoked.')
-  const user: AuthUser = { id: identity.id, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
+  const permissions = await resolveEffectivePermissions(identity.tenantId, identity.roles, identity.permissions)
+  const user: AuthUser = { id: identity.id, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions }
   const accessToken = signAccessToken(user)
   const rotatedToken = jwt.sign({ sub: identity.id }, env.JWT_REFRESH_SECRET, { expiresIn: env.REFRESH_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
   identity.refreshTokenHash = await bcrypt.hash(rotatedToken, 12)
@@ -247,8 +262,6 @@ router.post('/refresh', asyncRoute(async (request, response) => {
   response.cookie('lendflow_refresh', rotatedToken, { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
   response.json({ success: true, message: 'Token refreshed successfully', data: { accessToken, user } })
 }))
-
-export default router
 
 router.post('/users/:id/reset-password', requireAuth, requirePermission('identity.users.update'), asyncRoute(async (request: AuthRequest, response) => {
   const admin = currentUser(request)
@@ -262,3 +275,34 @@ router.post('/users/:id/reset-password', requireAuth, requirePermission('identit
   await emailProvider.send({ to: identity.email, subject: 'Reset your Trust Loans password', body: `An administrator initiated a password reset for your Trust Loans account. Use this one-time reset token: ${rawToken}` }).catch(() => {})
   response.json({ success: true, message: 'Password reset initiated. Share the reset instructions securely if email delivery is unavailable.', data: { resetToken: rawToken, email: identity.email } })
 }))
+
+router.get('/roles/catalog', requireAuth, requirePermission('identity.roles.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const admin = currentUser(request)
+  const mappings = await RolePermissionModel.find({ tenantId: admin.tenantId }).select('role normalizedRole permissions description updatedAt updatedBy').lean()
+  const mapByRole = new Map(mappings.map((m) => [m.normalizedRole, m]))
+  const roles = [...new Set([...DEFAULT_ROLES, ...mappings.map((m) => m.normalizedRole)])].map((normalized) => {
+    const mapped = mapByRole.get(normalized)
+    const permissions = normalized === 'super_admin' || normalized === 'superadmin' ? ['*', ...ALL_PERMISSIONS] : (mapped?.permissions ?? [])
+    return { role: mapped?.role || displayRoleName(normalized), normalizedRole: normalized, permissions: [...new Set(permissions)], description: mapped?.description ?? '', updatedAt: mapped?.updatedAt ?? null, locked: ['super_admin', 'superadmin'].includes(normalized) }
+  })
+  response.json({ success: true, message: 'Role permissions retrieved successfully', data: { roles, permissions: ALL_PERMISSIONS, groups: PERMISSION_GROUPS } })
+}))
+
+router.put('/roles/:role', requireAuth, requirePermission('identity.roles.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const admin = currentUser(request)
+  const normalized = normalizeRoleName(String(request.params.role ?? ''))
+  if (!normalized) throw new HttpError(400, 'INVALID_ROLE', 'Role name is required.')
+  if (['super_admin', 'superadmin'].includes(normalized)) throw new HttpError(400, 'ROLE_LOCKED', 'Super Admin is the overall system role and always has full access; it cannot be restricted here.')
+  const input = z.object({ permissions: z.array(z.string()).default([]), description: z.string().max(500).optional(), roleLabel: z.string().max(120).optional() }).parse(request.body)
+  const allowed = new Set(ALL_PERMISSIONS as readonly string[])
+  const permissions = [...new Set((input.permissions ?? []).filter((p) => p && p !== '*' && allowed.has(p)))]
+  const role = await RolePermissionModel.findOneAndUpdate(
+    { tenantId: admin.tenantId, normalizedRole: normalized },
+    { $set: { tenantId: admin.tenantId, role: input.roleLabel?.trim() || displayRoleName(normalized), normalizedRole: normalized, permissions, description: input.description ?? '', updatedBy: admin.id } },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  )
+  await recordAudit({ user: admin, action: 'identity.role_permissions.updated', entityType: 'role_permission', entityId: String(role._id), next: { role: role.role, normalizedRole: normalized, permissions } })
+  response.json({ success: true, message: 'Role permissions saved successfully', data: { role: role.role, normalizedRole: role.normalizedRole, permissions: role.permissions, description: role.description ?? '' } })
+}))
+
+export default router

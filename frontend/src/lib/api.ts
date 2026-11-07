@@ -213,6 +213,13 @@ export function getLoanStatement(id: string) {
   return apiRequest<Record<string, unknown>>(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement`)
 }
 
+export type RolePermissionEntry = { role: string; normalizedRole: string; permissions: string[]; description?: string; updatedAt?: string | null; locked?: boolean }
+export type RoleCatalog = { roles: RolePermissionEntry[]; permissions: string[]; groups: Array<{ key: string; label: string; permissions: string[] }> }
+export function getRoleCatalog() { return apiRequest<RoleCatalog>('/api/v1/auth/roles/catalog') }
+export function saveRolePermissions(role: string, input: { permissions: string[]; description?: string; roleLabel?: string }) {
+  return apiRequest<RolePermissionEntry>(`/api/v1/auth/roles/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify(input) })
+}
+
 export async function restoreSession() {
   if (!await refreshAccessToken()) return null
   authenticatedUser = await apiRequest<AuthUser>('/api/v1/auth/me', {}, false)

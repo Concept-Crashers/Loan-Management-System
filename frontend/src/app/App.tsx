@@ -59,6 +59,7 @@ export function App() {
       <Route path="transactions" element={<PageForPath path="/transactions" />} />
       <Route path="reports" element={<Suspense fallback={<div className="page-loading">Loading report workspace…</div>}><ReportsPage /></Suspense>} />
       <Route path="branches" element={<PageForPath path="/branches" />} />
+      <Route path="branches/:id" element={<RecordDetailPage />} />
       <Route path="staff" element={<PageForPath path="/staff" />} />
       <Route path="audit-logs" element={<AuditLogsPage />} />
       <Route path="settings" element={<SettingsPage />} />

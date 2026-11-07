@@ -104,8 +104,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const current = groups.flatMap((group) => group.items).find((item) => item.to === location.pathname || (item.to !== '/' && location.pathname.startsWith(item.to)))
   const roles = currentUser?.roles ?? []
-  const isAdmin = roles.some((r) => ['super_admin', 'super-admin', 'superadmin', 'admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
-  const canSee = (item: NavItem) => isAdmin || !item.permission || permissions.includes(item.permission) || permissions.includes('*')
+  const isSuperAdmin = roles.some((r) => ['super_admin', 'super-admin', 'superadmin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
+  const canSee = (item: NavItem) => isSuperAdmin || permissions.includes('*') || !item.permission || permissions.includes(item.permission)
 
   function selectResult(path: string) { navigate(path); setQuery(''); setSearchOpen(false) }
 

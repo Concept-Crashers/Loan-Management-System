@@ -126,11 +126,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const role = useSelector((state: RootState) => state.session.role)
   const roles = useSelector((state: RootState) => state.session.user?.roles ?? [])
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
-  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin','admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
-  const canReview = isSuperAdmin || ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
-  const canManageLoans = isSuperAdmin || permissions.includes('loans.accounts.manage')
-  const canReverseRepayments = isSuperAdmin || permissions.includes('repayments.reverse')
-  const canManageUsers = isSuperAdmin || permissions.includes('identity.users.update')
+  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
+  const canReview = isSuperAdmin || permissions.includes('*') || ['Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
+  const canManageLoans = isSuperAdmin || permissions.includes('*') || permissions.includes('loans.accounts.manage')
+  const canReverseRepayments = isSuperAdmin || permissions.includes('*') || permissions.includes('repayments.reverse')
+  const canManageUsers = isSuperAdmin || permissions.includes('*') || permissions.includes('identity.users.update')
   const navigate = useNavigate()
 
   const loadData = async () => {
