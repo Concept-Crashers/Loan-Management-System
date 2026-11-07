@@ -6,6 +6,7 @@
     { "path": "/customers", "title": "Customers" },
     { "path": "/customers/new", "title": "Register Customer" },
     { "path": "/customers/:id", "title": "Customer Profile" },
+    { "path": "/customers/:id/edit", "title": "Edit Customer" },
     { "path": "/products", "title": "Loan Products" },
     { "path": "/products/new", "title": "Create Loan Product" },
     { "path": "/products/:id", "title": "Loan Product Details" },

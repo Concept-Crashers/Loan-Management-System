@@ -13,4 +13,10 @@ describe('permission middleware', () => {
     requirePermission('reports.export')({ user: { id: 'u1', tenantId: 't1', branchIds: ['b1'], roles: [], permissions: ['reports.export'] } } as unknown as AuthRequest, {} as never, next)
     expect(next).toHaveBeenCalledWith()
   })
+
+  it('allows super admin regardless of permissions', () => {
+    const next = vi.fn()
+    requirePermission('reports.export')({ user: { id: 'u1', tenantId: 't1', branchIds: ['b1'], roles: ['super_admin'], permissions: [] } } as unknown as AuthRequest, {} as never, next)
+    expect(next).toHaveBeenCalledWith()
+  })
 })

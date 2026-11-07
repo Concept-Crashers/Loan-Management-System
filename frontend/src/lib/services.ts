@@ -34,7 +34,7 @@ type BackendProduct = {
     maxAmountMinor: number
     annualRateBps: number
     interestMethod: 'flat' | 'declining_balance'
-    repaymentFrequency: 'weekly' | 'biweekly' | 'monthly'
+    repaymentFrequency: 'daily' | 'weekly' | 'biweekly' | 'monthly'
     minTenureMonths: number
     maxTenureMonths: number
     gracePeriodDays: number
@@ -64,8 +64,10 @@ const fromMinor = (value: number | undefined) => (value ?? 0) / 100
 const toMinor = (value: number) => Math.round(value * 100)
 
 function mapCustomer(record: BackendCustomer): Customer {
+  const mongoId = identifier(record)
   return {
-    id: record.customerNumber ?? identifier(record),
+    id: record.customerNumber ?? mongoId,
+    recordId: mongoId,
     name: record.name,
     phone: record.phone,
     email: record.email ?? '',
@@ -89,8 +91,10 @@ function mapCustomer(record: BackendCustomer): Customer {
 }
 
 function mapProduct(record: BackendProduct): LoanProduct {
+  const mongoId = identifier(record)
   return {
-    id: identifier(record),
+    id: mongoId,
+    recordId: mongoId,
     name: record.name,
     description: `${record.category} loan`,
     minAmount: fromMinor(record.terms?.minAmountMinor),
@@ -98,7 +102,7 @@ function mapProduct(record: BackendProduct): LoanProduct {
     interestRate: (record.terms?.annualRateBps ?? 0) / 100,
     interestMethod: record.terms?.interestMethod ?? 'flat',
     duration: record.terms?.maxTenureMonths ?? 12,
-    frequency: record.terms?.repaymentFrequency === 'biweekly' ? 'Bi-weekly' : record.terms?.repaymentFrequency === 'weekly' ? 'Weekly' : 'Monthly',
+    frequency: record.terms?.repaymentFrequency === 'daily' ? 'Daily' : record.terms?.repaymentFrequency === 'biweekly' ? 'Bi-weekly' : record.terms?.repaymentFrequency === 'weekly' ? 'Weekly' : 'Monthly',
     gracePeriod: record.terms?.gracePeriodDays ?? 0,
     requiredDocuments: (record.terms?.requiredDocuments ?? []).join(', '),
     active: record.status === 'active',
@@ -143,6 +147,19 @@ export const api = {
     })
   },
 
+  updateApplication: (id: string, input: { amount?: number; duration?: number; purpose?: string; income?: number; obligations?: number; version: number }) =>
+    apiRequest<Application>(`/api/v1/applications/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...(input.amount !== undefined ? { amountMinor: toMinor(input.amount) } : {}),
+        ...(input.duration !== undefined ? { tenureMonths: input.duration } : {}),
+        ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+        ...(input.income !== undefined ? { incomeMinor: toMinor(input.income) } : {}),
+        ...(input.obligations !== undefined ? { obligationsMinor: toMinor(input.obligations) } : {}),
+        version: input.version,
+      }),
+    }),
+
   decideApplication: (id: string, decision: 'approved' | 'rejected', reason: string, version: number) =>
     apiRequest<Application>(`/api/v1/applications/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
@@ -178,22 +195,26 @@ export const api = {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/payments')
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => {
-      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as { _id?: string; customerId?: { name?: string; _id?: string } }) : null
+      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as { _id?: string; ref?: string; customerId?: { name?: string; _id?: string } }) : null
       const customerObj = loanObj && typeof loanObj.customerId === 'object' ? loanObj.customerId : null
+      const rid = String(record._id ?? record.id ?? record.reference ?? '')
       return {
-        id: String(record.reference ?? record._id ?? record.id ?? ''),
-        customer: customerObj?.name ?? String(record.customer ?? ''),
+        id: rid,
+        recordId: String(record._id ?? record.id ?? ''),
+        customer: String(record.customer ?? customerObj?.name ?? ''),
         customerId: customerObj?._id ? String(customerObj._id) : String(record.customerId ?? ''),
-        loan: String(loanObj?._id ?? record.loanAccountId ?? ''),
+        loan: String((loanObj as any)?.ref ?? loanObj?._id ?? record.loanAccountId ?? ''),
         amount: fromMinor(Number(record.amountMinor ?? 0)),
-        method: String(record.method ?? 'Cash') as Repayment['method'],
+        method: String(record.method ?? 'Manual') as Repayment['method'],
+        date: String(record.createdAt ?? record.date ?? '').slice(0, 10),
         reference: String(record.reference ?? ''),
-        date: String(record.createdAt ?? '').slice(0, 10),
-        receivedBy: String(record.confirmedBy ?? 'Cashier'),
+        receivedBy: String(record.confirmedBy ?? '—'),
         status: record.status === 'reversed' ? 'Reversed' : record.status === 'confirmed' ? 'Successful' : 'Pending review',
       }
     })
   },
+
+  confirmRepayment: (id: string) => apiRequest<any>(`/api/v1/finance/payments/${encodeURIComponent(id)}/confirm`, { method: 'POST' }),
 
   listSchedules: async (): Promise<ScheduleInstallment[]> => {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/schedules')
@@ -261,36 +282,69 @@ export const api = {
   },
 
   listStaff: async (): Promise<StaffMember[]> => {
-    const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/staff')
-    const records = Array.isArray(response) ? response : (response.data ?? [])
-    return records.map((record) => {
-      const userObj = typeof record.userId === 'object' && record.userId !== null ? (record.userId as { name?: string; email?: string; status?: string; _id?: string }) : null
-      return {
-        id: String(userObj?._id ?? record.userId ?? record._id ?? ''),
-        name: userObj?.name ?? 'Staff Member',
-        email: userObj?.email ?? '',
-        phone: '',
-        role: Array.isArray(record.roles) ? record.roles.join(', ') : 'Staff',
-        branch: 'Kampala Central',
-        lastActive: String(record.updatedAt ?? record.createdAt ?? '').slice(0, 10),
-        status: String(userObj?.status ?? record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
-      }
-    })
+    try {
+      const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/auth/users')
+      const records = Array.isArray(response) ? response : (response.data ?? [])
+      return records.map((record) => ({
+        id: String(record.id ?? record._id ?? ''),
+        name: String(record.name ?? 'Staff Member'),
+        email: String(record.email ?? ''),
+        phone: String(record.phone ?? ''),
+        role: Array.isArray(record.roles) ? (record.roles as string[]).join(', ') : 'Staff',
+        branch: Array.isArray(record.branchIds) && (record.branchIds as unknown[]).length ? String((record.branchIds as string[])[0]) : '—',
+        lastActive: '—',
+        status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
+      }))
+    } catch {
+      const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/staff')
+      const records = Array.isArray(response) ? response : (response.data ?? [])
+      return records.map((record) => {
+        const userObj = typeof record.userId === 'object' && record.userId !== null ? (record.userId as { name?: string; email?: string; status?: string; _id?: string }) : null
+        return {
+          id: String(userObj?._id ?? record.userId ?? record._id ?? ''),
+          name: userObj?.name ?? 'Staff Member',
+          email: userObj?.email ?? '',
+          phone: '',
+          role: Array.isArray(record.roles) ? (record.roles as string[]).join(', ') : 'Staff',
+          branch: 'Kampala Central',
+          lastActive: String(record.updatedAt ?? record.createdAt ?? '').slice(0, 10),
+          status: String(userObj?.status ?? record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
+        }
+      })
+    }
   },
+
+  createStaffUser: (input: { name: string; email: string; password: string; phone?: string; roles: string[]; branchIds?: string[] }) =>
+    apiRequest<{ data?: unknown }>('/api/v1/auth/users', { method: 'POST', body: JSON.stringify(input) }),
 
   listBranches: async (): Promise<BranchRecord[]> => {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/branches')
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => ({
-      id: String(record.code ?? record._id ?? ''),
+      id: String(record._id ?? record.id ?? record.code ?? ''),
       name: String(record.name ?? ''),
       district: String(record.district ?? ''),
-      manager: 'Branch Manager',
-      staff: 'Active',
-      activeLoans: '0',
-      status: 'Active',
+      manager: String(record.managerId ?? '—'),
+      staff: String(record.staffCount ?? '0'),
+      activeLoans: String(record.activeLoans ?? '0'),
+      status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
     }))
   },
+
+  updateCustomerStatus: (id: string, status: 'active' | 'inactive' | 'watchlist' | 'archived', version = 1) =>
+    apiRequest<Customer>(`/api/v1/customers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status, version }) }),
+
+  createBranch: (input: { code: string; name: string; district: string; managerId?: string }) =>
+    apiRequest<BranchRecord>('/api/v1/organisation/branches', { method: 'POST', body: JSON.stringify(input) }),
+
+  updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null; status?: 'active' | 'suspended' }) =>
+    apiRequest<BranchRecord>(`/api/v1/organisation/branches/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string }) =>
+    apiRequest<{ data?: unknown }>(`/api/v1/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  updateChartAccount: (id: string, input: { name?: string; active?: boolean }) =>
+    apiRequest<{ _id?: string }>(`/api/v1/finance/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
   listAuditLogs: async (): Promise<Array<Record<string, unknown>>> => {
     const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/audit')
@@ -333,6 +387,32 @@ export const api = {
     return mapCustomer(record)
   },
 
+  updateCustomer: async (id: string, input: Partial<Customer> & { version: number }) => {
+    const bId = branchId()
+    const record = await apiRequest<BackendCustomer>(`/api/v1/customers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        version: input.version,
+        ...(bId ? { branchId: bId } : {}),
+        name: input.name,
+        phone: input.phone,
+        email: input.email,
+        address: input.address,
+        district: input.district,
+        idType: input.idType,
+        nationalId: input.nationalId,
+        occupation: input.occupation,
+        employer: input.employer,
+        monthlyIncomeMinor: toMinor(Number(input.monthlyIncome ?? 0)),
+        nextOfKin: input.nextOfKin,
+        nextOfKinRelationship: input.nextOfKinRelationship,
+        nextOfKinPhone: input.nextOfKinPhone,
+        dateOfBirth: input.dateOfBirth,
+      }),
+    })
+    return mapCustomer(record)
+  },
+
   createProduct: async (input: Partial<LoanProduct>) => {
     const record = await apiRequest<BackendProduct>('/api/v1/loan-products', {
       method: 'POST',
@@ -346,7 +426,7 @@ export const api = {
           maxAmountMinor: toMinor(Number(input.maxAmount ?? 0)),
           annualRateBps: Math.round(Number(input.interestRate ?? 0) * 100),
           interestMethod: /flat/i.test(input.interestMethod ?? '') ? 'flat' : 'declining_balance',
-          repaymentFrequency: input.frequency === 'Weekly' ? 'weekly' : input.frequency === 'Bi-weekly' ? 'biweekly' : 'monthly',
+          repaymentFrequency: input.frequency === 'Daily' ? 'daily' : input.frequency === 'Weekly' ? 'weekly' : input.frequency === 'Bi-weekly' ? 'biweekly' : 'monthly',
           minTenureMonths: 1,
           maxTenureMonths: Number(input.duration ?? 1),
           gracePeriodDays: Number(input.gracePeriod ?? 0),
@@ -357,6 +437,9 @@ export const api = {
     })
     return mapProduct(record)
   },
+
+  updateProductStatus: (id: string, status: 'active' | 'inactive' | 'draft') =>
+    apiRequest<BackendProduct>(`/api/v1/loan-products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
   submitApplication: (input: { customerId: string; productId: string; amount: number; duration: number; purpose: string; income: number; obligations: number }) =>
     apiRequest<Application>('/api/v1/applications', {
@@ -373,11 +456,19 @@ export const api = {
       }),
     }),
 
-  recordDisbursement: (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string }) =>
-    apiRequest<{ account: { ref?: string; _id?: string }; transaction: unknown }>('/api/v1/finance/disbursements', {
-      method: 'POST',
-      body: JSON.stringify({ loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }),
-    }),
+  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string }) => {
+    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }
+    const auth = await apiRequest<any>('/api/v1/finance/disbursements', { method: 'POST', body: JSON.stringify(payload) })
+    const authId = auth?.id ?? auth?._id ?? auth?.data?.id ?? auth?.data?._id
+    if (!authId) return auth
+    try {
+      return await apiRequest<any>(`/api/v1/finance/disbursements/${encodeURIComponent(String(authId))}/execute`, { method: 'POST' })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (/already|completed|exists/i.test(msg)) return auth
+      throw e
+    }
+  },
 
   recordRepayment: (input: { loanAccountId: string; amount: number; method: string; reference: string; branchId?: string }) =>
     apiRequest<Repayment>('/api/v1/finance/payments', {

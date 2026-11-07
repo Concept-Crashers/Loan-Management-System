@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, List, Search, SlidersHorizontal } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, EyeOff, List, Search, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { toast } from 'sonner'
@@ -7,10 +7,12 @@ import { useSelector } from 'react-redux'
 import { formatDate, formatUGX } from '../lib/format'
 import type { TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
-import { Avatar, Button, Card, Input, Select, StatusBadge, Textarea } from './ui/primitives'
+import { Avatar, Button, Card, Field, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
+import { PhoneNumberInput } from './ui/PhoneNumberInput'
 import { api } from '../lib/services'
+import { getRecordDetail } from '../lib/api'
 
 function displayValue(row: TableRow, column: PageColumn) {
   const value = row[column.key]
@@ -62,6 +64,18 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [selected, setSelected] = useState<TableRow | null>(null)
   const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
   const [decisionNotes, setDecisionNotes] = useState('')
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const [branchModal, setBranchModal] = useState(false)
+  const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '', managerId: '' })
+  const [branchSaving, setBranchSaving] = useState(false)
+  const [staffOptions, setStaffOptions] = useState<Array<{ id: string; name: string }>>([])
+  const [staffModal, setStaffModal] = useState(false)
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' })
+  const [staffSaving, setStaffSaving] = useState(false)
+  const [staffShowPassword, setStaffShowPassword] = useState(false)
+  const [editStaff, setEditStaff] = useState<TableRow | null>(null)
+  const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer' })
+  const [editStaffSaving, setEditStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
@@ -70,8 +84,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const role = useSelector((state: RootState) => state.session.role)
+  const roles = useSelector((state: RootState) => state.session.user?.roles ?? [])
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
-  const canReview = ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
+  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin','admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
+  const canReview = isSuperAdmin || ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
   const navigate = useNavigate()
 
   const loadData = async () => {
@@ -100,7 +116,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(pending.map((item) => ({ ref: item.ref, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement' })))
       } else if (path === '/repayments') {
         const rows = await api.listRepayments()
-        setRemoteRows(rows.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
+        setRemoteRows(rows.map((item) => ({ id: item.id, recordId: (item as any).recordId ?? item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
       } else if (path === '/schedules') {
         const rows = await api.listSchedules()
         setRemoteRows(rows.map((item) => ({ id: item.id, due: item.due, customer: item.customer, loan: item.loan, expected: item.expected, paid: item.paid, officer: item.officer, status: item.status })))
@@ -132,7 +148,13 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
 
   useEffect(() => {
     void loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
+
+  useEffect(() => {
+    if (!branchModal || staffOptions.length) return
+    void api.listStaff().then((rows) => setStaffOptions(rows.map((r) => ({ id: r.id, name: r.name })))).catch(() => {})
+  }, [branchModal, staffOptions.length])
 
   const allRows = remoteRows ?? []
   const filterKey = definition.filterKey
@@ -161,24 +183,37 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }, [page, pageCount])
 
   function openRow(row: TableRow) {
+    if (path === '/staff' && isSuperAdmin) {
+      setEditStaff(row)
+      setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' })
+      return
+    }
     const key = definition.detailKey ? row[definition.detailKey] : undefined
     if (definition.detailBase && key) navigate(`${definition.detailBase}/${encodeURIComponent(String(key))}`)
     else if (path === '/approvals' && row.id) navigate(`/applications/${encodeURIComponent(String(row.id))}`)
     else setSelected(row)
   }
 
-  function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
+  async function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
     if (!canReview) {
       toast.error('You do not have permission to decide applications.', { description: 'Only an authorized approver can record an underwriting decision.' })
       return
     }
     setDecisionNotes('')
-    setDecisionRequest({ row, decision })
+    try {
+      const fresh = await getRecordDetail('applications', String(row.id)) as any
+      const merged = { ...row, version: Number(fresh?.version ?? row.version ?? 1), status: String(fresh?.status ?? row.status ?? '') }
+      setDecisionRequest({ row: merged, decision })
+    } catch {
+      setDecisionRequest({ row, decision })
+      toast.info('Could not refresh application version; using the current row.')
+    }
   }
 
   async function confirmDecision() {
-    if (!decisionRequest) return
+    if (!decisionRequest || decisionSubmitting) return
     const { row, decision } = decisionRequest
+    setDecisionSubmitting(true)
     try {
       await api.decideApplication(
         String(row.id),
@@ -188,9 +223,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       )
       toast.success(`Application ${decision === 'approve' ? 'approved' : 'rejected'} successfully`)
       setDecisionRequest(null)
-      void loadData()
+      await loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Decision could not be recorded.')
+    } finally {
+      setDecisionSubmitting(false)
     }
   }
 
@@ -206,10 +243,40 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     }
   }
 
+  async function saveBranch() {
+    if (!branchForm.code.trim() || !branchForm.name.trim() || !branchForm.district.trim()) { toast.error('Enter branch code, name, and district.'); return }
+    setBranchSaving(true)
+    try {
+      await api.createBranch({ code: branchForm.code.trim(), name: branchForm.name.trim(), district: branchForm.district.trim(), managerId: branchForm.managerId || undefined })
+      toast.success('Branch created')
+      setBranchModal(false); setBranchForm({ code: '', name: '', district: '', managerId: '' }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch could not be created.') } finally { setBranchSaving(false) }
+  }
+
+  async function saveStaff() {
+    if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 12) { toast.error('Enter name, valid email, and a password with at least 12 characters.'); return }
+    setStaffSaving(true)
+    try {
+      await api.createStaffUser({ name: staffForm.name.trim(), email: staffForm.email.trim(), password: staffForm.password, phone: staffForm.phone.trim() || undefined, roles: [staffForm.roles] })
+      toast.success('Staff user created')
+      setStaffModal(false); setStaffForm({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be created.') } finally { setStaffSaving(false) }
+  }
+
+  async function saveEditStaff() {
+    if (!editStaff) return
+    setEditStaffSaving(true)
+    try {
+      await api.updateStaffUser(String(editStaff.id), { name: editStaffForm.name.trim() || undefined, email: editStaffForm.email.trim() || undefined, phone: editStaffForm.phone.trim() || undefined, roles: [editStaffForm.roles] })
+      toast.success('Staff user updated')
+      setEditStaff(null); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be updated.') } finally { setEditStaffSaving(false) }
+  }
+
   const headingAction = definition.newTo
     ? <Button onClick={() => navigate(definition.newTo!)}>{definition.newLabel ?? 'Add new'} <span>+</span></Button>
     : definition.newLabel
-      ? <Button onClick={() => navigate('/settings')}>+ {definition.newLabel}</Button>
+      ? <Button onClick={() => path === '/branches' ? setBranchModal(true) : path === '/staff' ? setStaffModal(true) : navigate('/settings')}>+ {definition.newLabel}</Button>
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
@@ -304,10 +371,30 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               <DropdownMenu.Item className="dropdown-item" onSelect={() => openRow(row)}>
                                 <Eye size={15} /> View details
                               </DropdownMenu.Item>
+                              {path === '/customers' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; const fresh: any = await getRecordDetail('customers', String(row.recordId ?? row.id)).catch(() => null); await api.updateCustomerStatus(String(row.recordId ?? row.id), active ? 'inactive' : 'active', Number(fresh?.version ?? row.version ?? 1)); toast.success(active ? 'Customer deactivated' : 'Customer activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Customer status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                              )}
+                              {path === '/products' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>
+                                  {String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}
+                                </DropdownMenu.Item>
+                              )}
+                              {path === '/staff' && (
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditStaff(row); setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' }) }}>Edit staff</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateStaffUser(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Staff deactivated' : 'Staff activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                                </>
+                              )}
+                              {path === '/branches' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                              )}
+                              {path === '/repayments' && String(row.status ?? '') === 'Pending review' && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</DropdownMenu.Item>
+                              )}
                               {path === '/approvals' && canReview && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>
-                                  <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => requestDecision(row, 'reject')}>× Reject</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => void requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => void requestDecision(row, 'reject')}>× Reject</DropdownMenu.Item>
                                 </>
                               )}
                               {path === '/collections' && (
@@ -383,15 +470,91 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         <DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application`} description="Submit an underwriting decision to the server." className="record-dialog">
           <div className="followup-note">
             <span>Application</span>
-            <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')}</p>
+            <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')} · status: {String(decisionRequest?.row.status ?? '—')} · v{String(decisionRequest?.row.version ?? 1)}</p>
             <span>Decision notes</span>
             <Textarea rows={4} value={decisionNotes} placeholder="Reason or underwriting conditions..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} />
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" onClick={() => setDecisionRequest(null)}>Cancel</Button>
-            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} onClick={confirmDecision}>
+            <Button variant="outline" disabled={decisionSubmitting} onClick={() => setDecisionRequest(null)}>Cancel</Button>
+            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={branchModal} onOpenChange={setBranchModal}>
+        <DialogContent title="Add branch" description="Create a branch and optionally assign a branch manager from staff." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Branch code" required><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" /></Field>
+            <Field label="Branch name" required><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Kampala Main" /></Field>
+            <Field label="District" required><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
+            <Field label="Branch manager">
+              <Select value={branchForm.managerId} onChange={(e) => setBranchForm({ ...branchForm, managerId: e.target.value })}>
+                <option value="">No manager assigned</option>
+                {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={branchSaving} onClick={() => setBranchModal(false)}>Cancel</Button>
+            <Button loading={branchSaving} onClick={() => void saveBranch()}>Create branch</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={staffModal} onOpenChange={setStaffModal}>
+        <DialogContent title="Invite staff" description="Create a staff account. Admin/super_admin have full operational rights; roles are stored for workflow/assignment." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Full name" required><Input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} placeholder="Staff name" /></Field>
+            <Field label="Email" required><Input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} placeholder="staff@example.com" /></Field>
+            <Field label="Temporary password" required className="field-span-2">
+              <div style={{ position: 'relative' }}>
+                <Input type={staffShowPassword ? 'text' : 'password'} value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} placeholder="Min 12 chars, upper/lower/number" style={{ paddingRight: 34 }} />
+                <button type="button" onClick={() => setStaffShowPassword((v) => !v)} aria-label={staffShowPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', color: '#7f8da0', display: 'grid', placeItems: 'center', padding: 2, cursor: 'pointer' }}>
+                  {staffShowPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Phone" hint="Select a country calling code (default +256) and enter the local number."><PhoneNumberInput value={staffForm.phone} onChange={(phone) => setStaffForm({ ...staffForm, phone })} /></Field>
+            <Field label="Role">
+              <Select value={staffForm.roles} onChange={(e) => setStaffForm({ ...staffForm, roles: e.target.value })}>
+                <option value="loan_officer">Loan officer</option>
+                <option value="approver">Approver</option>
+                <option value="manager">Manager</option>
+                <option value="finance">Finance / accounting</option>
+                <option value="collections">Collections</option>
+                <option value="admin">Admin</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
+            <Button loading={staffSaving} onClick={() => void saveStaff()}>Create staff</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editStaff} onOpenChange={(open) => !open && setEditStaff(null)}>
+        <DialogContent title="Edit staff" description="Update staff details and role. To assign a branch manager, create/edit a branch and select this staff member." className="record-dialog">
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <Field label="Full name"><Input value={editStaffForm.name} onChange={(e) => setEditStaffForm({ ...editStaffForm, name: e.target.value })} /></Field>
+            <Field label="Email"><Input type="email" value={editStaffForm.email} onChange={(e) => setEditStaffForm({ ...editStaffForm, email: e.target.value })} /></Field>
+            <Field label="Phone" hint="Select a country calling code and enter the local number."><PhoneNumberInput value={editStaffForm.phone} onChange={(phone) => setEditStaffForm({ ...editStaffForm, phone })} /></Field>
+            <Field label="Role">
+              <Select value={editStaffForm.roles} onChange={(e) => setEditStaffForm({ ...editStaffForm, roles: e.target.value })}>
+                <option value="loan_officer">Loan officer</option>
+                <option value="approver">Approver</option>
+                <option value="manager">Manager</option>
+                <option value="finance">Finance / accounting</option>
+                <option value="collections">Collections</option>
+                <option value="admin">Admin</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={editStaffSaving} onClick={() => setEditStaff(null)}>Cancel</Button>
+            <Button loading={editStaffSaving} onClick={() => void saveEditStaff()}>Save changes</Button>
           </div>
         </DialogContent>
       </Dialog>

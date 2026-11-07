@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import mongoose from 'mongoose'
 import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
 import { asyncRoute, HttpError } from '../../core/http.js'
@@ -12,12 +13,16 @@ const customerInput = z.object({
   address: z.string().min(3), district: z.string().min(2), idType: z.string().min(1), nationalId: z.string().min(3),
   occupation: z.string().min(2), employer: z.string().min(2), monthlyIncomeMinor: z.number().int().nonnegative(),
   nextOfKin: z.string().min(3), nextOfKinRelationship: z.string().min(2), nextOfKinPhone: z.string().min(7), dateOfBirth: z.coerce.date().optional(),
+  status: z.enum(['active', 'inactive', 'watchlist', 'archived']).optional(),
 })
 
 router.use(requireAuth)
 router.get('/:id', requirePermission('customers.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const customer = await CustomerModel.findOne({ tenantId: user.tenantId, $or: [{ _id: request.params.id }, { customerNumber: request.params.id }] }).select('-nationalId').lean()
+  const id = String(request.params.id || '')
+  const or: any[] = [{ customerNumber: id }]
+  if (mongoose.isValidObjectId(id)) or.push({ _id: id })
+  const customer = await CustomerModel.findOne({ tenantId: user.tenantId, $or: or }).select('-nationalId').lean()
   if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found.')
   assertBranchAccess(request, customer.branchId)
   response.json({ success: true, message: 'Customer retrieved successfully', data: customer })
@@ -46,7 +51,10 @@ router.post('/', requirePermission('customers.create'), asyncRoute(async (reques
 router.patch('/:id', requirePermission('customers.update'), asyncRoute(async (request: AuthRequest, response) => {
   const input = customerInput.partial().extend({ version: z.number().int().positive() }).parse(request.body)
   const user = currentUser(request)
-  const customer = await CustomerModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  const id = request.params.id
+  const or: Record<string, unknown>[] = [{ customerNumber: id }, { phone: id }]
+  if (mongoose.isValidObjectId(id)) or.push({ _id: id })
+  const customer = await CustomerModel.findOne({ tenantId: user.tenantId, $or: or })
   if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found.')
   if (customer.version !== input.version) throw new HttpError(409, 'STALE_VERSION', 'The customer changed elsewhere. Refresh before saving.')
   if (input.branchId) assertBranchAccess(request, input.branchId)

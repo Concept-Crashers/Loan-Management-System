@@ -5,7 +5,8 @@ import crypto from 'node:crypto'
 import { z } from 'zod'
 import { env } from '../../config/env.js'
 import { HttpError, asyncRoute } from '../../core/http.js'
-import { signAccessToken, type AuthUser, requireAuth, type AuthRequest } from '../../core/auth.js'
+import { signAccessToken, type AuthUser, requireAuth, type AuthRequest, requirePermission } from '../../core/auth.js'
+import { currentUser } from '../../core/scope.js'
 import { IdentityModel } from './identity.model.js'
 import { emailProvider } from '../../infrastructure/messaging/providers.js'
 
@@ -49,8 +50,8 @@ function validTotp(secret: string, input: string) {
   })
 }
 
-function publicUser(identity: { id: string; name?: string; email?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[] }): AuthUser {
-  return { id: identity.id, name: identity.name, email: identity.email, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions }
+function publicUser(identity: { id: string; name?: string; email?: string; phone?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[]; mfaEnabled?: boolean }): AuthUser & { mfaEnabled?: boolean; phone?: string } {
+  return { id: identity.id, name: identity.name, email: identity.email, phone: identity.phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }
 }
 
 router.post('/login', asyncRoute(async (request, response) => {
@@ -67,7 +68,7 @@ router.post('/login', asyncRoute(async (request, response) => {
     throw new HttpError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.')
   }
   if (identity.mfaEnabled && (!input.mfaCode || !identity.mfaSecret || !validTotp(decryptSecret(identity.mfaSecret), input.mfaCode))) throw new HttpError(401, 'MFA_REQUIRED', 'A valid MFA code is required.')
-  const user: AuthUser = publicUser({ id: identity.id, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions })
+  const user = publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled })
   const accessToken = signAccessToken(user)
   const refreshToken = jwt.sign({ sub: identity.id }, env.JWT_REFRESH_SECRET, { expiresIn: env.REFRESH_TOKEN_TTL as jwt.SignOptions['expiresIn'] })
   identity.refreshTokenHash = await bcrypt.hash(refreshToken, 12)
@@ -164,7 +165,59 @@ router.post('/verify-email', asyncRoute(async (request, response) => {
 }))
 
 router.get('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
-  response.json({ success: true, message: 'Identity retrieved successfully', data: request.user })
+  const identity = await IdentityModel.findById(request.user?.id).lean()
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
+  response.json({ success: true, message: 'Identity retrieved successfully', data: publicUser({ id: String(identity._id), name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds ?? [], roles: identity.roles ?? [], permissions: identity.permissions ?? [], mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.patch('/me', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), phone: z.string().max(40).optional(), email: z.email().optional() }).parse(request.body)
+  const identity = await IdentityModel.findById(request.user?.id)
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Account was not found.')
+  if (input.email !== undefined && input.email.toLowerCase() !== identity.email) {
+    const exists = await IdentityModel.findOne({ tenantId: identity.tenantId, email: input.email.toLowerCase(), _id: { $ne: identity._id } }).lean()
+    if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+    identity.email = input.email.toLowerCase()
+    ;(identity as any).emailVerifiedAt = undefined
+  }
+  if (input.name !== undefined) identity.name = input.name
+  if (input.phone !== undefined) (identity as any).phone = input.phone
+  await identity.save()
+  response.json({ success: true, message: 'Profile updated successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.post('/users', requireAuth, requirePermission('identity.users.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120), email: z.email(), password: passwordSchema, phone: z.string().max(40).optional(), roles: z.array(z.string()).min(1), branchIds: z.array(z.string()).optional(), permissions: z.array(z.string()).optional() }).parse(request.body)
+  const admin = currentUser(request)
+  const exists = await IdentityModel.findOne({ tenantId: admin.tenantId, email: input.email.toLowerCase() }).lean()
+  if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+  const identity = await IdentityModel.create({ tenantId: admin.tenantId, name: input.name, email: input.email.toLowerCase(), phone: input.phone ?? '', passwordHash: await bcrypt.hash(input.password, 12), roles: input.roles, branchIds: input.branchIds ?? [], permissions: input.permissions ?? [], status: 'active' })
+  response.status(201).json({ success: true, message: 'Staff user created successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
+}))
+
+router.get('/users', requireAuth, requirePermission('identity.users.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const admin = currentUser(request)
+  const users = await IdentityModel.find({ tenantId: admin.tenantId }).select('name email phone roles branchIds status createdAt').sort({ createdAt: -1 }).limit(200).lean()
+  response.json({ success: true, message: 'Users retrieved successfully', data: users.map((u) => ({ id: String(u._id), name: u.name, email: u.email, phone: (u as any).phone ?? '', roles: u.roles ?? [], branchIds: u.branchIds ?? [], status: u.status })) })
+}))
+
+router.patch('/users/:id', requireAuth, requirePermission('identity.users.update'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), email: z.email().optional(), phone: z.string().max(40).optional(), roles: z.array(z.string()).min(1).optional(), branchIds: z.array(z.string()).optional(), status: z.enum(['active', 'inactive', 'suspended']).optional() }).parse(request.body)
+  const admin = currentUser(request)
+  const identity = await IdentityModel.findOne({ _id: request.params.id, tenantId: admin.tenantId })
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Staff user was not found.')
+  if (input.email !== undefined && input.email.toLowerCase() !== identity.email) {
+    const exists = await IdentityModel.findOne({ tenantId: admin.tenantId, email: input.email.toLowerCase(), _id: { $ne: identity._id } }).lean()
+    if (exists) throw new HttpError(409, 'EMAIL_IN_USE', 'That email address is already in use.')
+    identity.email = input.email.toLowerCase()
+  }
+  if (input.name !== undefined) identity.name = input.name
+  if (input.phone !== undefined) (identity as any).phone = input.phone
+  if (input.roles !== undefined) identity.roles = input.roles
+  if (input.branchIds !== undefined) identity.branchIds = input.branchIds
+  if (input.status !== undefined) (identity as any).status = input.status
+  await identity.save()
+  response.json({ success: true, message: 'Staff user updated successfully', data: publicUser({ id: identity.id, name: identity.name, email: identity.email, phone: (identity as any).phone, tenantId: identity.tenantId, branchIds: identity.branchIds, roles: identity.roles, permissions: identity.permissions, mfaEnabled: identity.mfaEnabled }) })
 }))
 
 router.post('/logout', requireAuth, asyncRoute(async (request: AuthRequest, response) => {

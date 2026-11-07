@@ -1,27 +1,41 @@
-// In production, use the same-origin /api rewrite so the CSRF cookie is first-party.
-// For local development, VITE_API_URL may point at a local backend; otherwise Vite proxies /api.
-const API_BASE_URL = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL ?? '')
+// Use same-origin /api so CSRF cookies are first-party; Vercel rewrites /api to the backend.
+// Set VITE_API_URL only when you intentionally need a direct cross-origin backend.
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 export interface AuthUser {
   id: string
   name?: string
   email?: string
+  phone?: string
   tenantId: string
   branchIds: string[]
   roles: string[]
   permissions: string[]
+  mfaEnabled?: boolean
 }
 
 type ApiEnvelope<T> = { success: boolean; message: string; data: T; code?: string; errors?: unknown[] }
 let accessToken: string | null = null
 let authenticatedUser: AuthUser | null = null
 let refreshPromise: Promise<boolean> | null = null
+let csrfPromise: Promise<string | null> | null = null
 
 export function setAccessToken(token: string | null) { accessToken = token }
 export function getAuthenticatedUser() { return authenticatedUser }
-function csrfToken() {
+function readCsrfToken() {
   if (typeof document === 'undefined') return null
   return document.cookie.split('; ').find((cookie) => cookie.startsWith('lendflow_csrf='))?.slice('lendflow_csrf='.length) ?? null
+}
+async function ensureCsrfToken() {
+  const existing = readCsrfToken()
+  if (existing) return existing
+  if (!csrfPromise) {
+    csrfPromise = fetch(`${API_BASE_URL}/health`, { credentials: 'include' })
+      .then(() => readCsrfToken())
+      .catch(() => null)
+      .finally(() => { csrfPromise = null })
+  }
+  return csrfPromise
 }
 
 async function refreshAccessToken() {
@@ -45,8 +59,10 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, canRef
   headers.set('Content-Type', 'application/json')
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   const method = (init.method ?? 'GET').toUpperCase()
-  const csrf = csrfToken()
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrf) headers.set('X-CSRF-Token', csrf)
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrf = (await ensureCsrfToken()) ?? readCsrfToken()
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: 'include' })
   if (response.status === 401 && canRefresh && await refreshAccessToken()) return apiRequest<T>(path, init, false)
   if (response.ok && response.headers.get('content-type')?.includes('text/csv')) return await response.text() as T
@@ -78,9 +94,22 @@ export function disableMfa(code: string) {
   return apiRequest<null>('/api/v1/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ code }) })
 }
 
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiRequest<null>('/api/v1/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) })
+}
+
+export function updateProfile(input: { name?: string; phone?: string; email?: string }) {
+  return apiRequest<AuthUser>('/api/v1/auth/me', { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export function getMe() {
+  return apiRequest<AuthUser>('/api/v1/auth/me')
+}
+
 export interface OrganisationSettings {
   organisation: { name: string; legalName?: string; registrationNumber?: string; address?: string; phone?: string; email?: string }
   branding: { logoUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string }
+  preferences?: { defaultBranchId?: string; defaultRepaymentFrequency?: string; receiptReferenceFormat?: string; notifications?: Record<string, boolean> }
 }
 
 export function getOrganisationSettings() {
@@ -158,7 +187,7 @@ export function exportPortfolioSummary() {
 export function exportLedger(params: { branchId?: string; periodId?: string; account?: string } = {}) {
   return downloadFinanceCsv(`/api/v1/finance/ledger/export${queryString(params)}`, 'general-ledger.csv')
 }
-export type AuditEvent = { _id: string; action: string; entityType: string; entityId: string; actorId: string; branchId?: string; previous?: unknown; next?: unknown; createdAt: string }
+export type AuditEvent = { _id: string; action: string; entityType: string; entityId: string; actorId: string; actorName?: string; detail?: string; branchId?: string; previous?: unknown; next?: unknown; createdAt: string }
 export function listAuditEvents(page = 1, params: { entityType?: string; branchId?: string } = {}) {
   return apiRequest<PagedResult<AuditEvent>>(`/api/v1/audit${queryString({ page, pageSize: 25, ...params })}`)
 }
@@ -167,6 +196,10 @@ export function listEntityAudit(entityType: string, entityId: string) {
 }
 export function getRecordDetail(kind: 'customers' | 'products' | 'applications' | 'loans' | 'payments', id: string) {
   return apiRequest<Record<string, unknown>>(`/api/v1/${kind === 'payments' ? 'finance/payments' : kind === 'loans' ? 'finance/loans' : kind}/${encodeURIComponent(id)}`)
+}
+
+export function getLoanStatement(id: string) {
+  return apiRequest<Record<string, unknown>>(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement`)
 }
 
 export async function restoreSession() {

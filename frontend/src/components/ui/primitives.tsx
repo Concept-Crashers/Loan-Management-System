@@ -1,6 +1,6 @@
-import { forwardRef, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { Check, CircleAlert, Clock3, Eye, EyeOff, KeyRound, LoaderCircle, type LucideIcon } from 'lucide-react'
+import { Check, ChevronDown, CircleAlert, Clock3, Eye, EyeOff, KeyRound, LoaderCircle, Search, type LucideIcon } from 'lucide-react'
 import { cn } from './utils'
 
 const buttonStyles = cva('lf-button', {
@@ -40,6 +40,94 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 })
 
 export { SearchableSelect as Select } from './SearchableSelect'
+
+export type SelectOption = { value: string; label: string; disabled?: boolean; searchText?: string }
+export const SearchableSelect = forwardRef<HTMLSelectElement, Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'onChange'> & {
+  options: SelectOption[]
+  placeholder?: string
+  searchPlaceholder?: string
+  onChange?: (value: string) => void
+  onValueChange?: (value: string) => void
+}>(function SearchableSelect({ options, value, defaultValue, name, placeholder = 'Select…', searchPlaceholder = 'Search…', onChange, onValueChange, className = '', disabled, required, id }, ref) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [internal, setInternal] = useState(String(defaultValue ?? ''))
+  const wrap = useRef<HTMLDivElement>(null)
+  const isControlled = value !== undefined
+  const current = String(isControlled ? value : internal)
+  const selected = options.find((o) => o.value === current)
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return options
+    return options.filter((o) => (o.searchText ?? o.label).toLowerCase().includes(s))
+  }, [options, q])
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  function pick(v: string) {
+    if (!isControlled) setInternal(v)
+    onChange?.(v)
+    onValueChange?.(v)
+    setOpen(false)
+    setQ('')
+  }
+  return <div className={cn('lf-searchable-select', className)} ref={wrap}>
+    {name ? <input ref={ref as React.Ref<HTMLInputElement>} type="hidden" name={name} value={current} /> : null}
+    <button id={id} type="button" className={cn('lf-input lf-searchable-trigger', open && 'is-open')} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => !disabled && setOpen((v) => !v)}>
+      <span className={cn(!selected && 'lf-searchable-placeholder')}>{selected?.label ?? placeholder}</span>
+      <ChevronDown size={14} />
+    </button>
+    {open ? <div className="lf-searchable-popover" role="listbox">
+      <div className="lf-searchable-search"><Search size={13} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} aria-label="Search options" /></div>
+      <div className="lf-searchable-options">
+        {filtered.length ? filtered.map((o) => <button key={o.value || '__empty__'} type="button" role="option" aria-selected={o.value === current} disabled={o.disabled} className={cn('lf-searchable-option', o.value === current && 'is-selected')} onClick={() => pick(o.value)}>{o.label}{o.value === current ? <Check size={13} /> : null}</button>) : <div className="lf-searchable-empty">No matches</div>}
+      </div>
+    </div> : null}
+    {required ? <input tabIndex={-1} className="lf-searchable-required" value={current} required onChange={() => {}} aria-hidden /> : null}
+  </div>
+})
+
+export const countryCodes = [
+  { code: '+256', label: 'Uganda (+256)' },
+  { code: '+254', label: 'Kenya (+254)' },
+  { code: '+255', label: 'Tanzania (+255)' },
+  { code: '+250', label: 'Rwanda (+250)' },
+  { code: '+211', label: 'South Sudan (+211)' },
+  { code: '+243', label: 'DR Congo (+243)' },
+  { code: '+257', label: 'Burundi (+257)' },
+  { code: '+234', label: 'Nigeria (+234)' },
+  { code: '+233', label: 'Ghana (+233)' },
+  { code: '+27', label: 'South Africa (+27)' },
+  { code: '+44', label: 'United Kingdom (+44)' },
+  { code: '+1', label: 'United States (+1)' },
+]
+export function PhoneInput({ value = '', onChange, name, placeholder = '772 123 456', defaultCountry = '+256' }: { value?: string; onChange?: (value: string) => void; name?: string; placeholder?: string; defaultCountry?: string }) {
+  const parse = (v: string) => {
+    const t = (v || '').trim()
+    if (!t) return { code: defaultCountry, num: '' }
+    if (t.startsWith('0')) return { code: defaultCountry, num: t }
+    const hit = countryCodes.map((c) => c.code).sort((a,b)=>b.length-a.length).find((c) => t.startsWith(c))
+    if (hit) return { code: hit, num: t.slice(hit.length).trim() }
+    return { code: defaultCountry, num: t }
+  }
+  const init = parse(value)
+  const [code, setCode] = useState(init.code)
+  const [num, setNum] = useState(init.num)
+  useEffect(() => { const p = parse(value); setCode(p.code); setNum(p.num) }, [value])
+  function emit(c: string, n: string) {
+    const v = n.trim() ? (n.trim().startsWith('0') ? n.trim() : `${c} ${n.trim()}`) : ''
+    onChange?.(v)
+  }
+  return <div className="lf-phone-input">
+    <select className="lf-input lf-phone-code" value={code} onChange={(e) => { setCode(e.target.value); emit(e.target.value, num) }} aria-label="Country code">
+      {countryCodes.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+    </select>
+    <input className="lf-input lf-phone-number" name={name} value={num} onChange={(e) => { setNum(e.target.value); emit(code, e.target.value) }} placeholder={placeholder} inputMode="tel" autoComplete="tel" />
+  </div>
+}
 
 export function Field({ label, hint, error, required, children, className = '' }: { label: string; hint?: string; error?: string; required?: boolean; children: ReactNode; className?: string }) {
   return <div className={cn('lf-field', className)}><label className="lf-label">{label}{required && <span className="required-star"> *</span>}</label>{children}{error ? <span className="lf-field-error">{error}</span> : hint ? <span className="lf-field-hint">{hint}</span> : null}</div>

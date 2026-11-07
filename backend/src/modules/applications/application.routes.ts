@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import mongoose from 'mongoose'
 import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
 import { asyncRoute, HttpError } from '../../core/http.js'
@@ -36,6 +37,7 @@ router.post('/', requirePermission('loans.applications.create'), asyncRoute(asyn
   const parsed = createInput.parse(request.body)
   const user = currentUser(request)
   assertBranchAccess(request, parsed.branchId)
+  if (!mongoose.isValidObjectId(parsed.customerId) || !mongoose.isValidObjectId(parsed.productId)) throw new HttpError(400, 'INVALID_ID', 'Customer or loan product identifier is invalid. Reload the form and try again.')
   const [customer, product] = await Promise.all([CustomerModel.findOne({ _id: parsed.customerId, tenantId: user.tenantId, branchId: parsed.branchId }).lean(), LoanProductModel.findOne({ _id: parsed.productId, tenantId: user.tenantId, status: 'active' }).lean()])
   if (!customer) throw new HttpError(404, 'CUSTOMER_NOT_FOUND', 'Customer was not found in the selected branch.')
   if (!product) throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'Active loan product was not found.')
@@ -45,14 +47,40 @@ router.post('/', requirePermission('loans.applications.create'), asyncRoute(asyn
   response.status(201).json({ success: true, message: 'Loan application submitted successfully', data: application })
 }))
 
+router.patch('/:id', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ amountMinor: z.number().int().positive().optional(), tenureMonths: z.number().int().positive().optional(), purpose: z.string().min(5).optional(), incomeMinor: z.number().int().nonnegative().optional(), obligationsMinor: z.number().int().nonnegative().optional(), version: z.number().int().positive() }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_EDIT_STATE', 'Approved, rejected, or cancelled applications cannot be edited.')
+  if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
+  const product = await LoanProductModel.findOne({ _id: application.productId, tenantId: user.tenantId }).lean()
+  if (!product) throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'Loan product was not found.')
+  const next = { amountMinor: parsed.amountMinor ?? application.amountMinor, tenureMonths: parsed.tenureMonths ?? application.tenureMonths }
+  if (next.amountMinor < product.terms.minAmountMinor || next.amountMinor > product.terms.maxAmountMinor || next.tenureMonths < product.terms.minTenureMonths || next.tenureMonths > product.terms.maxTenureMonths) throw new HttpError(422, 'TERMS_OUT_OF_RANGE', 'The requested amount or tenure is outside the product terms.')
+  const previous = { amountMinor: application.amountMinor, tenureMonths: application.tenureMonths, purpose: application.purpose }
+  if (parsed.amountMinor !== undefined) application.amountMinor = parsed.amountMinor
+  if (parsed.tenureMonths !== undefined) application.tenureMonths = parsed.tenureMonths
+  if (parsed.purpose !== undefined) application.purpose = parsed.purpose
+  if (parsed.incomeMinor !== undefined) application.incomeMinor = parsed.incomeMinor
+  if (parsed.obligationsMinor !== undefined) application.obligationsMinor = parsed.obligationsMinor
+  application.version += 1
+  await application.save()
+  await recordAudit({ user, action: 'application.updated', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, previous, next: { amountMinor: application.amountMinor, tenureMonths: application.tenureMonths, purpose: application.purpose, version: application.version } })
+  response.json({ success: true, message: 'Application updated successfully', data: application })
+}))
+
 router.post('/:id/decision', requirePermission('loans.applications.approve'), asyncRoute(async (request: AuthRequest, response) => {
   const parsed = z.object({ decision: z.enum(['approved', 'rejected']), reason: z.string().min(3), version: z.number().int().positive() }).parse(request.body)
   const user = currentUser(request)
   const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
   if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
   assertBranchAccess(request, application.branchId)
-  if (application.version !== parsed.version || !['approval_pending', 'under_review'].includes(application.status)) throw new HttpError(409, 'INVALID_DECISION_STATE', 'This application is no longer available for decision.')
-  if (application.officerId === user.id) throw new HttpError(403, 'SEPARATION_OF_DUTIES', 'The submitting officer cannot decide this application.')
+  const decidable = ['submitted', 'under_review', 'assessment_required', 'approval_pending']
+  if (application.version !== parsed.version || !decidable.includes(application.status)) throw new HttpError(409, 'INVALID_DECISION_STATE', `This application is no longer available for decision (status: ${application.status}, expected version ${application.version}). Refresh approvals and try again.`)
+  const isPrivileged = (user.roles ?? []).some((r) => ['super_admin', 'super-admin', 'superadmin', 'admin'].includes(String(r).toLowerCase().replace(/\s+/g, '_')))
+  if (!isPrivileged && application.officerId === user.id) throw new HttpError(403, 'SEPARATION_OF_DUTIES', 'The submitting officer cannot decide this application.')
   application.status = parsed.decision
   application.version += 1
   application.decisionHistory.push({ actorId: user.id, decision: parsed.decision, reason: parsed.reason, at: new Date() })

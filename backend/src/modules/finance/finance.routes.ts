@@ -18,10 +18,25 @@ async function openPeriod(tenantId: string, branchId: string, at = new Date()) {
 }
 router.get('/loans/:id', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber').lean()
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
   if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
   assertBranchAccess(request, loan.branchId)
   response.json({ success: true, message: 'Loan account retrieved successfully', data: loan })
+}))
+
+router.get('/loans/:id/statement', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
+  if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
+  assertBranchAccess(request, loan.branchId)
+  const [schedule, payments, disbursements] = await Promise.all([
+    RepaymentScheduleModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ installmentNumber: 1 }).lean(),
+    PaymentModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
+    DisbursementModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
+  ])
+  const outstandingMinor = Number(loan.outstandingPrincipalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0)
+  const paidMinor = payments.filter((p) => p.status === 'confirmed').reduce((s, p) => s + Number(p.amountMinor ?? 0), 0)
+  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), outstandingPrincipalMinor: Number(loan.outstandingPrincipalMinor ?? 0), outstandingInterestMinor: Number(loan.outstandingInterestMinor ?? 0), outstandingFeesMinor: Number(loan.outstandingFeesMinor ?? 0), outstandingMinor, confirmedPaidMinor: paidMinor } } })
 }))
 router.get('/payments/:id', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
@@ -122,6 +137,14 @@ router.post('/accounts', requirePermission('accounting.journal.create'), asyncRo
   const input = z.object({ code: z.string().regex(/^[a-z0-9_.-]{2,40}$/), name: z.string().min(2).max(120), type: z.enum(['asset', 'liability', 'equity', 'income', 'expense']) }).parse(request.body)
   const account = await ChartAccountModel.create({ ...input, tenantId: currentUser(request).tenantId })
   response.status(201).json({ success: true, message: 'Chart account created', data: account })
+}))
+router.patch('/accounts/:id', requirePermission('accounting.journal.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ name: z.string().min(2).max(120).optional(), active: z.boolean().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const account = await ChartAccountModel.findOneAndUpdate({ _id: request.params.id, tenantId: user.tenantId }, { $set: input }, { new: true })
+  if (!account) throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Chart account was not found.')
+  await recordAudit({ user, action: 'chart_account.updated', entityType: 'chart_account', entityId: account.id, next: input })
+  response.json({ success: true, message: 'Chart account updated', data: account })
 }))
 router.get('/periods', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)

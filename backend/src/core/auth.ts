@@ -28,6 +28,9 @@ export async function requireAuth(request: AuthRequest, _response: Response, nex
 
 export function requirePermission(permission: string) {
   return (request: AuthRequest, _response: Response, next: NextFunction) => {
+    const roles = request.user?.roles ?? []
+    const norm = (r: unknown) => String(r).toLowerCase().replace(/[\s-]+/g, '_')
+    if (roles.some((r) => ['super_admin', 'superadmin', 'admin'].includes(norm(r)))) return next()
     if (!request.user?.permissions.includes(permission)) return next(new HttpError(403, 'FORBIDDEN', 'You do not have permission to perform this action.'))
     next()
   }

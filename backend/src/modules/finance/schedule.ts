@@ -4,13 +4,14 @@ import { RepaymentScheduleModel } from './finance.model.js'
 type ProductTerms = {
   annualRateBps: number
   interestMethod: 'flat' | 'declining_balance'
-  repaymentFrequency: 'weekly' | 'biweekly' | 'monthly'
+  repaymentFrequency: 'daily' | 'weekly' | 'biweekly' | 'monthly'
   fees?: Array<{ amountMinor?: number; amount?: number }>
 }
 
 function addPeriod(date: Date, frequency: ProductTerms['repaymentFrequency']) {
   const result = new Date(date)
-  if (frequency === 'weekly') result.setDate(result.getDate() + 7)
+  if (frequency === 'daily') result.setDate(result.getDate() + 1)
+  else if (frequency === 'weekly') result.setDate(result.getDate() + 7)
   else if (frequency === 'biweekly') result.setDate(result.getDate() + 14)
   else result.setMonth(result.getMonth() + 1)
   return result
@@ -24,7 +25,7 @@ export async function generateRepaymentSchedule(account: {
   productSnapshot: ProductTerms
 }, tenureMonths: number, session?: ClientSession) {
   const terms = account.productSnapshot
-  const periods = terms.repaymentFrequency === 'weekly' ? tenureMonths * 4 : terms.repaymentFrequency === 'biweekly' ? tenureMonths * 2 : tenureMonths
+  const periods = terms.repaymentFrequency === 'daily' ? tenureMonths * 30 : terms.repaymentFrequency === 'weekly' ? tenureMonths * 4 : terms.repaymentFrequency === 'biweekly' ? tenureMonths * 2 : tenureMonths
   const totalInterest = terms.interestMethod === 'flat'
     ? Math.round(account.principalMinor * terms.annualRateBps / 10_000 * tenureMonths / 12)
     : Math.round(account.principalMinor * (terms.annualRateBps / 10_000) * tenureMonths / 12 / 2)

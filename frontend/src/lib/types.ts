@@ -4,6 +4,8 @@ export type PaymentMethod = 'MTN Mobile Money' | 'Airtel Money' | 'Bank transfer
 
 export interface Customer {
   id: string
+  /** MongoDB record id for API mutations (falls back to id). */
+  recordId?: string
   name: string
   phone: string
   email: string
@@ -27,6 +29,7 @@ export interface Customer {
 
 export interface LoanProduct {
   id: string
+  recordId?: string
   name: string
   description: string
   minAmount: number
@@ -34,7 +37,7 @@ export interface LoanProduct {
   interestRate: number
   interestMethod?: string
   duration: number
-  frequency: 'Weekly' | 'Bi-weekly' | 'Monthly'
+  frequency: 'Daily' | 'Weekly' | 'Bi-weekly' | 'Monthly'
   gracePeriod?: number
   fees?: string
   lateRule?: string
