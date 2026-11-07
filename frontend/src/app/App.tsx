@@ -4,6 +4,7 @@ import { Link, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from '../components/AppShell'
 import { OperationalPage } from '../components/OperationalPage'
 import { RecordDetailPage } from '../components/RecordDetailPage'
+import { QuickContactsButton } from '../components/QuickContactsButton'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { CustomerForm } from '../features/customers/CustomerForm'
 import { ApplicationWizard } from '../features/loans/ApplicationWizard'
@@ -22,7 +23,7 @@ import { AuditLogsPage } from '../features/management/AuditLogsPage'
 
 const ReportsPage = lazy(() => import('../features/management/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
-function WorkspaceLayout() { const location = useLocation(); return <AppShell><AnimatePresence mode="wait"><motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}><Outlet /></motion.div></AnimatePresence></AppShell> }
+function WorkspaceLayout() { const location = useLocation(); return <AppShell><AnimatePresence mode="wait"><motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}><Outlet /></motion.div></AnimatePresence><QuickContactsButton /></AppShell> }
 function PageForPath({ path }: { path: string }) {
   const definition = pageRegistry[path]
   return definition ? <OperationalPage definition={definition} path={path} /> : <NotFoundPage />

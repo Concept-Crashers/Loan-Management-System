@@ -131,6 +131,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const canManageLoans = isSuperAdmin || permissions.includes('*') || permissions.includes('loans.accounts.manage')
   const canReverseRepayments = isSuperAdmin || permissions.includes('*') || permissions.includes('repayments.reverse')
   const canManageUsers = isSuperAdmin || permissions.includes('*') || permissions.includes('identity.users.update')
+  const canManageBranches = isSuperAdmin || permissions.includes('*') || permissions.includes('branches.manage')
+  const canCreateStaff = isSuperAdmin || permissions.includes('*') || permissions.includes('identity.users.create')
   const navigate = useNavigate()
 
   const loadData = async () => {
@@ -337,7 +339,15 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const headingAction = definition.newTo
     ? <Button onClick={() => navigate(definition.newTo!)}>{definition.newLabel ?? 'Add new'} <span>+</span></Button>
     : definition.newLabel
-      ? <Button onClick={() => path === '/branches' ? (setEditBranch(null), setBranchForm({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' }), setBranchModal(true)) : path === '/staff' ? setStaffModal(true) : navigate('/settings')}>+ {definition.newLabel}</Button>
+      ? <Button onClick={() => {
+          if (path === '/branches') {
+            if (!canManageBranches) { toast.error('You need `branches.manage` permission to add or edit branches.'); return }
+            setEditBranch(null); setBranchForm({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' }); setBranchModal(true)
+          } else if (path === '/staff') {
+            if (!canCreateStaff) { toast.error('You need `identity.users.create` permission to add staff.'); return }
+            setStaffModal(true)
+          } else navigate('/settings')
+        }}>+ {definition.newLabel}</Button>
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
@@ -450,8 +460,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/branches' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditBranch(row); setBranchForm({ branchId: String((row as any).branchId ?? row.id ?? ''), code: String((row as any).code ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: String((row as any).managerId ?? ''), status: String((row as any).status ?? 'Active').toLowerCase() === 'active' ? 'active' : 'suspended', createdAt: String((row as any).createdAt ?? ''), updatedAt: String((row as any).updatedAt ?? '') }); setBranchModal(true) }}>Edit branch</DropdownMenu.Item>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/branches/${encodeURIComponent(String((row as any).branchId ?? row.id))}`)}>View branch</DropdownMenu.Item>
+                                <DropdownMenu.Item className="dropdown-item" onSelect={() => {
+                                    if (!canManageBranches) { toast.error('You need `branches.manage` permission to edit branches.'); return }
+                                    setEditBranch(row); setBranchForm({ branchId: String((row as any).branchId ?? row.id ?? ''), code: String((row as any).code ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: String((row as any).managerId ?? ''), status: String((row as any).status ?? 'Active').toLowerCase() === 'active' ? 'active' : 'suspended', createdAt: String((row as any).createdAt ?? ''), updatedAt: String((row as any).updatedAt ?? '') }); setBranchModal(true)
+                                  }}>Edit branch</DropdownMenu.Item>
+                                <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/branches/${encodeURIComponent(String((row as any).branchId ?? row.id))}`)}>View branch</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                                 </>
                               )}
