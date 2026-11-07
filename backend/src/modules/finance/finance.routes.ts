@@ -357,6 +357,17 @@ router.get('/disbursements', requirePermission('loans.accounts.view'), asyncRout
   response.json({ success: true, message: 'Disbursements retrieved successfully', data, meta: result.meta })
 }))
 
+router.get('/disbursements/:id', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const disbursement = await DisbursementModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate([
+    { path: 'loanAccountId', select: 'principalMinor status branchId', populate: { path: 'customerId', select: 'name customerNumber phone' } },
+    { path: 'applicationId', select: 'status branchId' },
+  ]).lean()
+  if (!disbursement) throw new HttpError(404, 'DISBURSEMENT_NOT_FOUND', 'Disbursement was not found.')
+  assertBranchAccess(request, disbursement.branchId)
+  response.json({ success: true, message: 'Disbursement retrieved successfully', data: disbursement })
+}))
+
 router.post('/disbursements/:id/cancel', requirePermission('loans.disburse.authorize'), asyncRoute(async (request: AuthRequest, response) => {
   const parsed = z.object({ reason: z.string().min(3) }).parse(request.body)
   const user = currentUser(request)

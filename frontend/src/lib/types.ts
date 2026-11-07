@@ -1,5 +1,5 @@
 export type LoanStatus = 'Active' | 'Overdue' | 'Pending Disbursement' | 'Restructured' | 'Fully Paid' | 'Written Off' | 'Closed'
-export type ApplicationStatus = 'Draft' | 'Submitted' | 'Under Review' | 'Additional Information Required' | 'Approved' | 'Rejected' | 'Cancelled'
+export type ApplicationStatus = 'Draft' | 'Submitted' | 'Under Review' | 'Additional Information Required' | 'Information Requested' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Cancelled' | 'Withdrawn'
 export type PaymentMethod = 'MTN Mobile Money' | 'Airtel Money' | 'Bank transfer' | 'Cash' | 'Other'
 
 export interface Customer {

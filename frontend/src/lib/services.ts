@@ -138,7 +138,7 @@ export const api = {
         product: productObj?.name ?? String(record.productName ?? record.product ?? record.productId ?? ''),
         amount: fromMinor(Number(record.amountMinor ?? 0)),
         duration: Number(record.tenureMonths ?? 0),
-        status: String(record.status ?? 'submitted').replaceAll('_', ' ') as Application['status'],
+        status: ({ draft: 'Draft', submitted: 'Submitted', under_review: 'Under Review', assessment_required: 'Additional Information Required', info_requested: 'Information Requested', approval_pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled', withdrawn: 'Withdrawn' } as Record<string, Application['status']>)[String(record.status ?? 'submitted')] ?? (String(record.status ?? 'Submitted').replaceAll('_', ' ') as Application['status']),
         submitted: String(record.createdAt ?? '').slice(0, 10),
         income: fromMinor(Number(record.incomeMinor ?? 0)),
         officer: String(record.officerId ?? ''),
@@ -453,11 +453,11 @@ export const api = {
     return mapCustomer(record)
   },
 
-  createProduct: async (input: Partial<LoanProduct>) => {
+  createProduct: async (input: Partial<LoanProduct> & { code?: string }) => {
     const record = await apiRequest<BackendProduct>('/api/v1/loan-products', {
       method: 'POST',
       body: JSON.stringify({
-        code: `${String(input.name ?? 'PRODUCT').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12)}-${Date.now()}`,
+        code: String((input as any).code || `${String(input.name ?? 'PRODUCT').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12)}-${Date.now()}`),
         name: input.name,
         category: 'individual',
         approvalLimitMinor: toMinor(Number(input.maxAmount ?? 0)),
