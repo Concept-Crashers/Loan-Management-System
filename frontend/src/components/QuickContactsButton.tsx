@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageCircle, Phone, Search, Users, X } from 'lucide-react'
+import { MessageCircle, Phone, Search, ShieldCheck, Users, X } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import { api } from '../lib/services'
 import type { Customer, LoanAccount } from '../lib/types'
@@ -111,7 +111,7 @@ export function QuickContactsButton() {
     </button>
     {open && <div className="quick-contacts-panel" role="dialog" aria-label="Customer balances and quick contacts">
       <div className="quick-contacts-head">
-        <div><strong>Customer balances</strong><small>Select a customer, then use Call or WhatsApp</small></div>
+        <div><strong>Customer balances</strong><small>Secure staff quick contact</small></div>
         <button type="button" className="quick-contacts-close" onClick={() => setOpen(false)} aria-label="Close"><X size={16} /></button>
       </div>
       <div className="quick-contacts-search"><Search size={14} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, phone, ID, balance..." autoFocus /></div>
@@ -139,7 +139,7 @@ export function QuickContactsButton() {
           </div>
         })}
       </div>
-      <div className="quick-contacts-foot">Select a customer, then use <strong>Call</strong> or <strong>WhatsApp</strong>. WhatsApp opens a prefilled formal reminder to the customer’s number; it is sent from the WhatsApp account logged in on this device (the current staff member). Office contact: <strong>{WHATSAPP_DISPLAY}</strong>.</div>
+      <div className="quick-contacts-foot"><ShieldCheck size={13} /> <span><strong>Secured by Trust Loans</strong> · Authorized staff access. Customer contact actions are used for account servicing and follow-up.</span></div>
     </div>}
   </>, document.body)
 }
