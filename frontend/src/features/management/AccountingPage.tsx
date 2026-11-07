@@ -4,9 +4,10 @@ import { toast } from 'sonner'
 import { Button, Card, Input, Select, StatusBadge } from '../../components/ui/primitives'
 import { closeAccountingPeriod, createChartAccount, exportLedger, exportPortfolioSummary, getTrialBalance, listAccountingPeriods, listChartAccounts, listLedger, openAccountingPeriod, type AccountingPeriod, type ChartAccount, type JournalEntry, type PagedResult } from '../../lib/api'
 import { api } from '../../lib/services'
+import { formatUGX } from '../../lib/format'
 
 type Tab = 'accounts' | 'periods' | 'ledger' | 'trial-balance'
-const money = (value: number) => `UGX ${(value / 100).toLocaleString('en-UG', { maximumFractionDigits: 0 })}`
+const money = (value: number) => formatUGX(value)
 const emptyPage = <T,>(): PagedResult<T> => ({ data: [], meta: { page: 1, pageSize: 25, total: 0, pageCount: 1 } })
 
 export function AccountingPage() {

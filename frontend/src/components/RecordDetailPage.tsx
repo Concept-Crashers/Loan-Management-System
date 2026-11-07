@@ -3,7 +3,7 @@ import { ArrowLeft, Download, FileText, LockKeyhole, Pencil, RefreshCw, ShieldCh
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
-import { formatDate } from '../lib/format'
+import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
 import { getRecordDetail, listEntityAudit, type AuditEvent } from '../lib/api'
 import { api } from '../lib/services'
@@ -50,7 +50,7 @@ function isSensitiveField(key: string) {
   return sensitiveFields.has(key.replace(/[_\s-]/g, '').toLowerCase())
 }
 
-const ugx = (m: unknown) => typeof m === 'number' ? `UGX ${(m/100).toLocaleString()}` : '—'
+const ugx = (m: unknown) => typeof m === 'number' ? formatUGX(m / 100) : '—'
 function displayRecordField(key: string, value: unknown) {
   if (typeof value === 'number' && /minor$/i.test(key)) return ugx(value)
   if (typeof value === 'string' && /(date|due|submitted|registered|created|updated)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(value)) return formatDate(value)
