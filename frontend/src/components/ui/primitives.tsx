@@ -54,7 +54,10 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, Omit<SelectHTMLAtt
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [internal, setInternal] = useState(String(defaultValue ?? ''))
+  const [pop, setPop] = useState<{ top: number; left: number; width: number } | null>(null)
   const wrap = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
   const isControlled = value !== undefined
   const current = String(isControlled ? value : internal)
   const selected = options.find((o) => o.value === current)
@@ -65,9 +68,19 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, Omit<SelectHTMLAtt
   }, [options, q])
   useEffect(() => {
     if (!open) return
-    const onDoc = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false) }
+    const place = () => {
+      const r = triggerRef.current?.getBoundingClientRect()
+      if (!r) return
+      const space = window.innerHeight - r.bottom - 8
+      const up = space < 180 && r.top > space
+      setPop({ top: up ? Math.max(8, r.top - 268) : r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)), width: r.width })
+    }
+    place()
+    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (!wrap.current?.contains(t) && !popRef.current?.contains(t)) setOpen(false) }
     document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
   }, [open])
   function pick(v: string) {
     if (!isControlled) setInternal(v)
@@ -78,16 +91,16 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, Omit<SelectHTMLAtt
   }
   return <div className={cn('lf-searchable-select', className)} ref={wrap}>
     {name ? <input ref={ref as React.Ref<HTMLInputElement>} type="hidden" name={name} value={current} /> : null}
-    <button id={id} type="button" className={cn('lf-input lf-searchable-trigger', open && 'is-open')} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => !disabled && setOpen((v) => !v)}>
+    <button ref={triggerRef} id={id} type="button" className={cn('lf-input lf-searchable-trigger', open && 'is-open')} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => !disabled && setOpen((v) => !v)}>
       <span className={cn(!selected && 'lf-searchable-placeholder')}>{selected?.label ?? placeholder}</span>
       <ChevronDown size={14} />
     </button>
-    {open ? <div className="lf-searchable-popover" role="listbox">
+    {open && pop && typeof document !== 'undefined' ? createPortal(<div ref={popRef} className="lf-searchable-popover" role="listbox" style={{ position: 'fixed', top: pop.top, left: pop.left, width: pop.width, zIndex: 5000 }}>
       <div className="lf-searchable-search"><Search size={13} /><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} aria-label="Search options" /></div>
       <div className="lf-searchable-options">
         {filtered.length ? filtered.map((o) => <button key={o.value || '__empty__'} type="button" role="option" aria-selected={o.value === current} disabled={o.disabled} className={cn('lf-searchable-option', o.value === current && 'is-selected')} onClick={() => pick(o.value)}>{o.label}{o.value === current ? <Check size={13} /> : null}</button>) : <div className="lf-searchable-empty">No matches</div>}
       </div>
-    </div> : null}
+    </div>, document.body) : null}
     {required ? <input tabIndex={-1} className="lf-searchable-required" value={current} required onChange={() => {}} aria-hidden /> : null}
   </div>
 })
