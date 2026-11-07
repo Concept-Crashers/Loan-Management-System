@@ -1,4 +1,4 @@
-import { forwardRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Check, CircleAlert, Clock3, Eye, EyeOff, KeyRound, LoaderCircle, type LucideIcon } from 'lucide-react'
 import { cn } from './utils'
@@ -39,9 +39,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return <textarea ref={ref} className={cn('lf-input lf-textarea', className)} {...props} />
 })
 
-export function Select({ className = '', children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn('lf-input lf-select', className)} {...props}>{children}</select>
-}
+export { SearchableSelect as Select } from './SearchableSelect'
 
 export function Field({ label, hint, error, required, children, className = '' }: { label: string; hint?: string; error?: string; required?: boolean; children: ReactNode; className?: string }) {
   return <div className={cn('lf-field', className)}><label className="lf-label">{label}{required && <span className="required-star"> *</span>}</label>{children}{error ? <span className="lf-field-error">{error}</span> : hint ? <span className="lf-field-hint">{hint}</span> : null}</div>

@@ -1,7 +1,7 @@
 
 @layer base {
   :root {
-    font-family: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     color: #35445a;
     background: #f6f8fb;
     font-synthesis: none;
@@ -29,7 +29,7 @@
 
 * { box-sizing: border-box; }
 html { min-width: 320px; min-height: 100%; background: var(--canvas); }
-body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--ink); background: var(--canvas); font-family: 'Work Sans', sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; }
+body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--ink); background: var(--canvas); font-family: 'Poppins', sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -168,7 +168,7 @@ a { color: inherit; text-decoration: none; }
 .dropdown-item:hover, .dropdown-item[data-highlighted] { color: #355f9a; background: #f2f6fb; }
 .dropdown-item > span:last-child { margin-left: auto; color: #34836b; }
 .dropdown-danger { color: #b75454; }.dropdown-separator { height: 1px; margin: 4px; background: #edf0f4; }
-.lf-toast { font-family: 'Work Sans', sans-serif !important; font-size: 11px !important; }
+.lf-toast { font-family: 'Poppins', sans-serif !important; font-size: 11px !important; }
 
 /* Dashboard and its financial overview */
 .dashboard-page, .operational-page, .detail-page, .form-page, .reports-page, .settings-page { width: 100%; max-width: 1400px; margin: 0 auto; }
@@ -526,3 +526,27 @@ a { color: inherit; text-decoration: none; }
 
 .auth-security-note { display: flex; justify-content: center; margin-top: 14px; }
 .auth-security-note .lf-badge { font-size: 6.5px; padding: 3px 8px; gap: 4px; }
+
+
+/* Searchable selects and country-code phone fields */
+.lf-search-select { position: relative; width: 100%; min-width: 0; }
+.lf-search-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer; }
+.lf-search-select-trigger > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lf-search-select-trigger > svg { flex: 0 0 auto; color: #8a9bb0; }
+.lf-search-select-trigger:disabled { cursor: not-allowed; opacity: .62; }
+.lf-search-select-placeholder { color: #8794a5; }
+.lf-search-select-panel { position: absolute; z-index: 140; top: calc(100% + 5px); right: 0; left: 0; min-width: 180px; padding: 6px; border: 1px solid #e4eaf1; border-radius: 8px; background: #fff; box-shadow: 0 14px 32px rgb(24 43 68 / 15%); animation: menu-in .12s ease-out; }
+.lf-search-select-search-wrap { display: flex; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid #e8edf3; border-radius: 5px; color: #8c9bae; background: #fbfcfe; }
+.lf-search-select-search-wrap input { width: 100%; min-width: 0; height: 31px; padding: 0; border: 0; outline: 0; color: #445b75; background: transparent; font-size: 10px; }
+.lf-search-select-search-wrap input::placeholder { color: #a6b1bf; }
+.lf-search-select-options { max-height: 225px; margin-top: 5px; overflow: auto; overscroll-behavior: contain; }
+.lf-search-select-option { width: 100%; min-height: 31px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 0; border-radius: 5px; color: #53677f; background: #fff; font-size: 10px; text-align: left; cursor: pointer; }
+.lf-search-select-option:hover, .lf-search-select-option-active { color: #254f87; background: #f1f6fc; }
+.lf-search-select-option[aria-selected='true'] { color: #245aab; font-weight: 600; }
+.lf-search-select-option:disabled { color: #a4afbc; cursor: not-allowed; }
+.lf-search-select-option svg { flex: 0 0 auto; color: #3478dc; }
+.lf-search-select-empty { padding: 12px 8px; color: #8794a5; font-size: 10px; text-align: center; }
+.lf-search-select-native { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; }
+.phone-number-input { width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(132px, .95fr) minmax(0, 1.25fr); gap: 7px; }
+.phone-number-input .phone-country-select { min-width: 0; }
+@media (max-width: 520px) { .phone-number-input { grid-template-columns: minmax(112px, .9fr) minmax(0, 1.1fr); gap: 6px; } .lf-search-select-panel { min-width: 160px; } }

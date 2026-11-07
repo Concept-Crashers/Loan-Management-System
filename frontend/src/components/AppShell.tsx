@@ -82,8 +82,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (query.trim().length < 2) return []
     const q = query.toLowerCase()
     return [
-      ...searchCustomers.filter((person) => person.name.toLowerCase().includes(q) || person.id.toLowerCase().includes(q)).slice(0, 4).map((person) => ({ title: person.name, meta: `Customer · ${person.id}`, path: `/customers/${encodeURIComponent(person.id)}` })),
-      ...searchLoans.filter((loan) => loan.ref.toLowerCase().includes(q) || loan.customer.toLowerCase().includes(q)).slice(0, 3).map((loan) => ({ title: loan.ref, meta: `Loan · ${loan.customer}`, path: `/loans/${encodeURIComponent(loan.ref)}` })),
+      ...searchCustomers.filter((person) => [person.name, person.id, person.phone, person.email, person.district].some((field) => String(field ?? '').toLowerCase().includes(q))).slice(0, 4).map((person) => ({ title: person.name, meta: `Customer · ${person.id} · ${person.phone}`, path: `/customers/${encodeURIComponent(person.id)}` })),
+      ...searchLoans.filter((loan) => [loan.ref, loan.customer, loan.customerId, loan.product].some((field) => String(field ?? '').toLowerCase().includes(q))).slice(0, 3).map((loan) => ({ title: loan.ref, meta: `Loan · ${loan.customer} · ${loan.product}`, path: `/loans/${encodeURIComponent(loan.ref)}` })),
     ].slice(0, 6)
   }, [query, searchCustomers, searchLoans])
 
