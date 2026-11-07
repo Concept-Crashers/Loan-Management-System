@@ -338,4 +338,32 @@ router.post('/payments/:id/reverse', requirePermission('repayments.reverse'), as
   } finally { await session.endSession() }
   response.json({ success: true, message: 'Repayment reversal recorded', data: result })
 }))
+
+
+router.get('/disbursements', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const options = pagination(request)
+  const branchId = request.query.branchId ? String(request.query.branchId) : undefined
+  const filter = { tenantId: user.tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(branchId ? { branchId } : user.branchIds.length ? { branchId: { $in: user.branchIds } } : {}) }
+  const result = await paged(DisbursementModel, filter, options, { createdAt: -1 })
+  const data = await DisbursementModel.populate(result.data, [
+    { path: 'loanAccountId', select: 'principalMinor status', populate: { path: 'customerId', select: 'name customerNumber phone' } },
+    { path: 'applicationId', select: 'status' },
+  ])
+  response.json({ success: true, message: 'Disbursements retrieved successfully', data, meta: result.meta })
+}))
+
+router.post('/disbursements/:id/cancel', requirePermission('loans.disburse.authorize'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ reason: z.string().min(3) }).parse(request.body)
+  const user = currentUser(request)
+  const disbursement = await DisbursementModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!disbursement) throw new HttpError(404, 'DISBURSEMENT_NOT_FOUND', 'Disbursement authorization was not found.')
+  assertBranchAccess(request, disbursement.branchId)
+  if (disbursement.status !== 'authorized') throw new HttpError(409, 'INVALID_DISBURSEMENT_STATE', 'Only authorized disbursements can be cancelled.')
+  disbursement.status = 'cancelled'
+  await disbursement.save()
+  await recordAudit({ user, action: 'disbursement.cancelled', entityType: 'disbursement', entityId: disbursement.id, branchId: disbursement.branchId, next: { status: disbursement.status, reason: parsed.reason } })
+  response.json({ success: true, message: 'Disbursement cancelled', data: disbursement })
+}))
+
 export default router

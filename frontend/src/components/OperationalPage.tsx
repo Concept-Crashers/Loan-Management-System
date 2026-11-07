@@ -150,9 +150,14 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         const rows = await api.listLoans()
         setRemoteRows(rows.map((item) => ({ id: (item as any).id ?? item.ref, ref: item.ref, customer: item.customer, customerId: item.customerId, product: item.product, principal: item.principal, outstanding: item.outstanding, nextDue: item.nextDue, status: item.status })))
       } else if (path === '/disbursements') {
-        const rows = await api.listLoans()
-        const pending = rows.filter((item) => item.status === 'Pending Disbursement')
-        setRemoteRows(pending.map((item) => ({ id: (item as any).id ?? item.ref, ref: item.ref, applicationId: item.applicationId, branchId: item.branchId, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement' })))
+        try {
+          const rows = await api.listDisbursements()
+          setRemoteRows(rows.map((item: any) => ({ id: item.id, loan: item.loan, customer: item.customer, amount: item.amount, branch: item.branch || 'Primary Branch', submitted: item.created, state: item.status === 'completed' ? 'Completed' : item.status === 'cancelled' ? 'Cancelled' : 'Authorized', status: item.status, reference: item.reference })))
+        } catch {
+          const rows = await api.listLoans()
+          const pending = rows.filter((item) => item.status === 'Pending Disbursement')
+          setRemoteRows(pending.map((item) => ({ id: (item as any).id ?? item.ref, ref: item.ref, loan: item.ref, applicationId: item.applicationId, branchId: item.branchId, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement', status: 'pending_loan' })))
+        }
       } else if (path === '/repayments') {
         const rows = await api.listRepayments()
         setRemoteRows(rows.map((item) => ({ id: item.id, recordId: (item as any).recordId ?? item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
@@ -427,9 +432,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                 <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; const fresh: any = await getRecordDetail('customers', String(row.recordId ?? row.id)).catch(() => null); await api.updateCustomerStatus(String(row.recordId ?? row.id), active ? 'inactive' : 'active', Number(fresh?.version ?? row.version ?? 1)); toast.success(active ? 'Customer deactivated' : 'Customer activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Customer status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                               )}
                               {path === '/products' && (
-                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>
-                                  {String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}
-                                </DropdownMenu.Item>
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/products/${encodeURIComponent(String(row.id))}`)}>Open product</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const next = String(row.state ?? '') === 'Active' ? 'inactive' : 'active'; await api.updateProductStatus(String(row.id), next); toast.success(`Loan product ${next === 'active' ? 'activated' : 'deactivated'}`); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Product status could not be updated.') } }}>{String(row.state ?? '') === 'Active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                                </>
                               )}
                               {path === '/staff' && (
                                 <>
@@ -478,11 +484,26 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                   <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Write off loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Write-off reason', confirmLabel: 'Write off loan', danger: true, run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'write_off', reason); toast.success('Loan written off') } })}>Write off</DropdownMenu.Item>
                                 </>
                               )}
-                              {path === '/disbursements' && String(row.state ?? row.status ?? '').toLowerCase().includes('pending') && (
-                                <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/disbursements/new?loan=${encodeURIComponent(String(row.ref ?? row.id ?? ''))}`)}>Disburse loan</DropdownMenu.Item>
+                              {path === '/disbursements' && (
+                                <>
+                                  {String(row.status ?? '') === 'pending_loan' && <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/disbursements/new?loan=${encodeURIComponent(String(row.ref ?? row.id ?? ''))}`)}>Disburse loan</DropdownMenu.Item>}
+                                  {String(row.status ?? '') === 'authorized' && <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.executeDisbursementRecord(String(row.id)); toast.success('Disbursement completed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Disbursement could not be completed.') } }}>Complete disbursement</DropdownMenu.Item>}
+                                  {String(row.status ?? '') === 'authorized' && <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Cancel disbursement', description: `${String(row.customer ?? 'Borrower')} · ${formatUGX(Number(row.amount ?? 0))}`, reasonLabel: 'Cancellation reason', confirmLabel: 'Cancel disbursement', danger: true, run: async (reason) => { await api.cancelDisbursementRecord(String(row.id), reason); toast.success('Disbursement cancelled') } })}>Cancel disbursement</DropdownMenu.Item>}
+                                </>
+                              )}
+                              {path === '/schedules' && (
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onClick={undefined as any} onSelect={() => { const loan = String(row.loan ?? ''); if (!loan) { toast.info('Loan reference is unavailable for this schedule.'); return } navigate(`/loans/${encodeURIComponent(loan)}`) }}>Open loan</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(`Schedule follow-up for ${String(row.customer ?? 'customer')} due ${String(row.due ?? '')}`); setSelected(row) }}>Record follow-up note</DropdownMenu.Item>
+                                </>
                               )}
                               {path === '/collections' && (
-                                <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Record promise to pay', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Promise/follow-up notes', confirmLabel: 'Save promise', defaultReason: String(row.note ?? 'Promise to pay recorded'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'promise_to_pay', notes: reason }); toast.success('Promise to pay recorded') } })}>Promise to pay</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Escalate collection', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Escalation notes', confirmLabel: 'Escalate case', defaultReason: String(row.note ?? 'Escalated for follow-up'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'escalated', notes: reason }); toast.success('Collection escalated') } })}>Escalate</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Resolve collection', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Resolution notes', confirmLabel: 'Resolve case', defaultReason: String(row.note ?? 'Collection resolved'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'resolved', notes: reason }); toast.success('Collection resolved') } })}>Resolve case</DropdownMenu.Item>
+                                </>
                               )}
                             </DropdownMenu.Content>
                           </DropdownMenu.Portal>

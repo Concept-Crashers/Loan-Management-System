@@ -258,11 +258,30 @@ export const api = {
     })
   },
 
+  listDisbursements: async () => {
+    const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/disbursements')
+    const records = Array.isArray(response) ? response : (response.data ?? [])
+    return records.map((record) => {
+      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as any) : null
+      const customerObj = loanObj?.customerId && typeof loanObj.customerId === 'object' ? loanObj.customerId : null
+      return {
+        id: String(record._id ?? record.id ?? ''),
+        loan: String(loanObj?._id ?? record.loanAccountId ?? ''),
+        customer: String(customerObj?.name ?? customerObj?.customerNumber ?? 'Borrower'),
+        amount: fromMinor(Number(record.amountMinor ?? 0)),
+        branch: String(record.branchId ?? ''),
+        status: String(record.status ?? 'authorized'),
+        created: String(record.createdAt ?? '').slice(0, 10),
+        reference: String(record.reference ?? record.idempotencyKey ?? ''),
+      }
+    })
+  },
+  executeDisbursementRecord: (id: string) => apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/execute`, { method: 'POST' }),
+  cancelDisbursementRecord: (id: string, reason: string) => apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  updateCollection: (id: string, input: { status: 'open' | 'contacted' | 'promise_to_pay' | 'escalated' | 'resolved'; notes?: string; followUpAt?: string; promiseAmountMinor?: number; promiseDueAt?: string }) =>
+    apiRequest(`/api/v1/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ notes: '', ...input }) }),
   updateCollectionFollowup: (id: string, notes: string, status = 'contacted') =>
-    apiRequest<Record<string, unknown>>(`/api/v1/collections/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ notes, status }),
-    }),
+    apiRequest<Record<string, unknown>>(`/api/v1/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ notes, status }) }),
 
   listTransactions: async (): Promise<Transaction[]> => {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/finance/journal')
@@ -348,6 +367,8 @@ export const api = {
   updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string }) =>
     apiRequest<{ data?: unknown }>(`/api/v1/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
+  updateLoanProduct: (id: string, input: { name?: string; status?: 'draft' | 'active' | 'inactive'; terms?: { minAmountMinor?: number; maxAmountMinor?: number; annualRateBps?: number; interestMethod?: 'flat' | 'declining_balance'; repaymentFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly'; minTenureMonths?: number; maxTenureMonths?: number; gracePeriodDays?: number } }) =>
+    apiRequest(`/api/v1/loan-products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   updateChartAccount: (id: string, input: { name?: string; active?: boolean }) =>
     apiRequest<{ _id?: string }>(`/api/v1/finance/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
