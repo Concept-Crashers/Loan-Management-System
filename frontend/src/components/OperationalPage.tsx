@@ -22,6 +22,36 @@ function displayValue(row: TableRow, column: PageColumn) {
   return String(value)
 }
 
+function recordViewLabel(key: string) {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bId\b/g, 'ID')
+    .replace(/\bUgx\b/g, 'UGX')
+}
+
+function recordViewValue(key: string, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.length ? value.map((item) => recordViewValue(key, item)).join(', ') : '—'
+  if (typeof value === 'object') {
+    const item = value as Record<string, unknown>
+    const direct = item.name ?? item.fullName ?? item.reference ?? item.customerNumber ?? item.label
+    if (direct !== undefined) return recordViewValue(key, direct)
+    return Object.keys(item).length ? 'Additional details' : '—'
+  }
+  if (typeof value === 'number') {
+    const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase()
+    if (normalized.endsWith('minor')) return formatUGX(value / 100)
+    if (/(amount|outstanding|overdue|expected|paid|income|balance|principal|fees|interest)$/.test(normalized)) return formatUGX(value)
+  }
+  if (typeof value === 'string' && /(date|due|submitted|registered|created|updated)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return formatDate(value)
+  }
+  return String(value)
+}
+
 function exportRows(rows: TableRow[], title: string) {
   if (!rows.length) { toast.info('There are no rows to export.'); return }
   const headers = Object.keys(rows[0])
@@ -453,17 +483,38 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       </Card>
 
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent title={path === '/collections' ? 'Collection follow-up' : 'Record details'} description="Record details loaded from server." className="record-dialog">
-          {selected && (
-            <div className="record-detail-grid">
-              {Object.entries(selected).filter(([key]) => !['note', 'version'].includes(key)).map(([key, value]) => (
-                <div className="record-field" key={key}>
-                  <span>{key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^\w/, (letter) => letter.toUpperCase())}</span>
-                  <strong>{typeof value === 'number' && ['amount', 'outstanding', 'overdue', 'expected', 'paid', 'income'].includes(key) ? formatUGX(value) : String(value ?? '—')}</strong>
+        <DialogContent
+          title={path === '/collections' ? 'Collection follow-up' : 'Record details'}
+          description={path === '/collections' ? 'Review the record and document the next customer interaction.' : 'A read-only snapshot of the selected record.'}
+          className={`record-dialog record-view-dialog ${path === '/collections' ? 'record-followup-dialog' : ''}`}
+        >
+          {selected && (() => {
+            const summaryOnly = new Set(['note', 'version', 'id', 'recordid', 'name', 'customer', 'product', 'loan', 'reference', 'ref', 'receiptnumber', 'accountnumber', 'status', 'state'])
+            const fields = Object.entries(selected).filter(([key]) => !summaryOnly.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase()))
+            const metrics = Object.entries(selected).filter(([key, value]) => typeof value === 'number' && /^(amount|outstanding|overdue|expected|paid|balance|principal)$/i.test(key)).slice(0, 3)
+            const heading = recordViewValue('name', selected.name ?? selected.customer ?? selected.product ?? selected.loan ?? 'Record')
+            const reference = recordViewValue('reference', selected.reference ?? selected.ref ?? selected.receiptNumber ?? selected.accountNumber ?? selected.id ?? selected.recordId ?? 'Reference unavailable')
+            const status = selected.status ?? selected.state
+            return <>
+              <div className="record-view-summary">
+                <span className="record-view-symbol"><Eye size={19} aria-hidden="true" /></span>
+                <div className="record-view-identity">
+                  <span className="record-view-eyebrow">{definition.title} record</span>
+                  <strong>{heading}</strong>
+                  <small><span>Reference</span><code>{reference}</code></small>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="record-view-status">{status ? <StatusBadge status={String(status)} /> : <span className="record-view-type">{definition.title}</span>}</div>
+              </div>
+              {metrics.length > 0 && <div className="record-view-metrics">{metrics.map(([key, value]) => <div className="record-view-metric" key={key}><span>{recordViewLabel(key)}</span><strong>{recordViewValue(key, value)}</strong></div>)}</div>}
+              <div className="record-view-fields-heading"><h3>Record information</h3><span>{fields.length} {fields.length === 1 ? 'field' : 'fields'}</span></div>
+              {fields.length ? <div className="record-detail-grid">
+                {fields.map(([key, value]) => <div className="record-field" key={key}>
+                  <span>{recordViewLabel(key)}</span>
+                  <strong>{recordViewValue(key, value)}</strong>
+                </div>)}
+              </div> : <div className="record-view-empty">No additional record fields are available.</div>}
+            </>
+          })()}
           {path === '/collections' && (
             <div className="followup-note">
               <span>Previous note</span>

@@ -3,6 +3,7 @@ import { ArrowLeft, Download, FileText, LockKeyhole, Pencil, RefreshCw, ShieldCh
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
+import { formatDate } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
 import { getRecordDetail, listEntityAudit, type AuditEvent } from '../lib/api'
 import { api } from '../lib/services'
@@ -21,6 +22,15 @@ const sensitiveFields = new Set([
   'monthlyincome', 'income', 'salary', 'outstanding', 'outstandingbalance', 'balance',
 ])
 
+function humanizeFieldLabel(key: string) {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bId\b/g, 'ID')
+    .replace(/\bUgx\b/g, 'UGX')
+}
+
 function display(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
@@ -31,7 +41,7 @@ function display(value: unknown): string {
     if (o.name) return display(o.name)
     if (o.customerNumber) return display(o.customerNumber)
     if (o._id) return String(o._id)
-    return JSON.stringify(o)
+    return Object.keys(o).length ? 'Additional details' : '—'
   }
   return String(value)
 }
@@ -41,6 +51,11 @@ function isSensitiveField(key: string) {
 }
 
 const ugx = (m: unknown) => typeof m === 'number' ? `UGX ${(m/100).toLocaleString()}` : '—'
+function displayRecordField(key: string, value: unknown) {
+  if (typeof value === 'number' && /minor$/i.test(key)) return ugx(value)
+  if (typeof value === 'string' && /(date|due|submitted|registered|created|updated)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(value)) return formatDate(value)
+  return display(value)
+}
 export function RecordDetailPage() {
   const { id = '' } = useParams()
   const location = useLocation()
@@ -117,7 +132,7 @@ export function RecordDetailPage() {
       <div className="info-grid">
         {entries.map(([key, value]) => {
           const restricted = !canViewSensitive && isSensitiveField(key)
-          return <div key={key}><span>{key}</span><strong className={key.toLowerCase().includes('id') || key === 'reference' ? 'mono-text' : ''}>{restricted ? 'Restricted' : display(value)}</strong></div>
+          return <div key={key}><span>{humanizeFieldLabel(key)}</span><strong className={key.toLowerCase().includes('id') || key === 'reference' ? 'mono-text' : ''}>{restricted ? 'Restricted' : displayRecordField(key, value)}</strong></div>
         })}
       </div>
       {!canViewSensitive && <div className="access-warning"><LockKeyhole size={15} /> Sensitive financial and identification values are masked for the {role} demo role. The backend must enforce authorization on every request.</div>}
