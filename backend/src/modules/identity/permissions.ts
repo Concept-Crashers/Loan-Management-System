@@ -1,11 +1,13 @@
 export const ALL_PERMISSIONS = [
   'accounting.journal.create', 'accounting.journal.view', 'accounting.reconciliation.manage',
+  'applications.create', 'applications.decide', 'applications.view', // legacy/compat aliases (seeded previously)
   'audit.view',
   'branches.manage', 'branches.view',
   'collections.manage', 'collections.view',
   'customers.create', 'customers.documents.manage', 'customers.documents.view', 'customers.update', 'customers.view',
   'devices.register', 'devices.revoke',
   'identity.roles.manage', 'identity.roles.view', 'identity.users.create', 'identity.users.update', 'identity.users.view',
+  'loan-products.manage', 'loan-products.view', // legacy/compat aliases (seeded previously)
   'loans.accounts.manage', 'loans.accounts.view',
   'loans.applications.approve', 'loans.applications.assess', 'loans.applications.create', 'loans.applications.view',
   'loans.disburse.authorize', 'loans.disburse.execute',
@@ -23,8 +25,8 @@ export const PERMISSION_GROUPS: Array<{ key: string; label: string; permissions:
   { key: 'identity', label: 'Identity & access', permissions: ['identity.users.view','identity.users.create','identity.users.update','identity.roles.view','identity.roles.manage','users.view','users.manage'] },
   { key: 'organisation', label: 'Organisation & branches', permissions: ['organisation.settings.view','organisation.settings.manage','branches.view','branches.manage'] },
   { key: 'customers', label: 'Customers & documents', permissions: ['customers.view','customers.create','customers.update','customers.documents.view','customers.documents.manage'] },
-  { key: 'products', label: 'Loan products', permissions: ['loans.products.view','loans.products.create'] },
-  { key: 'applications', label: 'Loan applications', permissions: ['loans.applications.view','loans.applications.create','loans.applications.assess','loans.applications.approve'] },
+  { key: 'products', label: 'Loan products', permissions: ['loans.products.view','loans.products.create','loan-products.view','loan-products.manage'] },
+  { key: 'applications', label: 'Loan applications', permissions: ['loans.applications.view','loans.applications.create','loans.applications.assess','loans.applications.approve','applications.view','applications.create','applications.decide'] },
   { key: 'loans', label: 'Loan accounts & disbursement', permissions: ['loans.accounts.view','loans.accounts.manage','loans.disburse.authorize','loans.disburse.execute'] },
   { key: 'repayments', label: 'Repayments', permissions: ['repayments.capture','repayments.confirm','repayments.reverse'] },
   { key: 'collections', label: 'Collections', permissions: ['collections.view','collections.manage'] },

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { connectDatabase, disconnectDatabase } from '../src/config/database.js'
 import { IdentityModel } from '../src/modules/identity/identity.model.js'
+import { ALL_PERMISSIONS } from '../src/modules/identity/permissions.js'
 
 const required = (name: string) => {
   const value = process.env[name]?.trim()
@@ -20,27 +21,17 @@ if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) ||
 }
 if (!branchIds.length) throw new Error('SYSTEM_ADMIN_BRANCH_IDS must contain at least one branch id.')
 
-const permissions = [
-  'customers.view', 'customers.create', 'customers.update', 'customers.documents.view', 'customers.documents.manage',
-  'loan-products.view', 'loan-products.manage', 'loans.products.view',
-  'applications.view', 'applications.create', 'applications.decide', 'loans.applications.view', 'loans.applications.approve',
-  'loans.accounts.view', 'loans.accounts.manage', 'loans.disburse.authorize', 'loans.disburse.execute',
-  'repayments.capture', 'repayments.confirm', 'repayments.reverse', 'collections.view', 'collections.manage',
-  'accounting.journal.view', 'accounting.journal.create', 'accounting.reconciliation.manage',
-  'reports.view', 'reports.export', 'audit.view', 'notifications.view', 'notifications.manage',
-  'organisation.settings.view', 'organisation.settings.manage', 'users.view', 'users.manage', 'identity.users.view',
-  'branches.view', 'branches.manage', '*',
-]
+const permissions = [...ALL_PERMISSIONS, '*']
 
 await connectDatabase()
 try {
   const existing = await IdentityModel.findOne({ tenantId, email })
   if (existing) throw new Error('A user with this email already exists in the tenant.')
   const identity = await IdentityModel.create({
-    tenantId, email, name, branchIds, roles: ['Super Admin'], permissions,
+    tenantId, email, name, branchIds, roles: ['super_admin'], permissions,
     passwordHash: await bcrypt.hash(password, 12), status: 'active', emailVerifiedAt: new Date(),
   })
-  console.log(`Created system administrator ${identity.email} for tenant ${tenantId}.`)
+  console.log(`Created overall system administrator ${identity.email} for tenant ${tenantId}.`)
 } finally {
   await disconnectDatabase()
 }
