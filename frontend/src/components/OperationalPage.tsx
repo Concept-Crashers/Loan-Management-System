@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, EyeOff, List, Search, SlidersHorizontal } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, EyeOff, List, Plus, Save, Search, SlidersHorizontal, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { toast } from 'sonner'
@@ -629,8 +629,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             </div>
           )}
           <div className="dialog-actions">
-            <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
-            {path === '/collections' && <Button onClick={saveFollowup}>Save follow-up</Button>}
+            <Button variant="outline" icon={X} onClick={() => setSelected(null)}>Close</Button>
+            {path === '/collections' && <Button icon={Save} onClick={saveFollowup}>Save follow-up</Button>}
           </div>
         </DialogContent>
       </Dialog>
@@ -646,8 +646,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             <Textarea rows={4} value={decisionNotes} placeholder="Reason or underwriting conditions..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} />
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={decisionSubmitting} onClick={() => { setDecisionRequest(null); setDecisionCredit(null) }}>Cancel</Button>
-            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
+            <Button variant="outline" icon={X} disabled={decisionSubmitting} onClick={() => { setDecisionRequest(null); setDecisionCredit(null) }}>Cancel</Button>
+            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} icon={Check} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
           </div>
@@ -662,8 +662,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             <Textarea rows={4} value={actionReason} placeholder="Provide a clear reason for audit and operations..." onChange={(event) => setActionReason(event.target.value)} maxLength={500} />
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={actionBusy} onClick={() => setActionDialog(null)}>Cancel</Button>
-            <Button variant={actionDialog?.danger ? 'danger' : 'primary'} loading={actionBusy} onClick={() => void runActionDialog()}>{actionDialog?.confirmLabel ?? 'Confirm'}</Button>
+            <Button variant="outline" icon={X} disabled={actionBusy} onClick={() => setActionDialog(null)}>Cancel</Button>
+            <Button variant={actionDialog?.danger ? 'danger' : 'primary'} icon={Check} loading={actionBusy} onClick={() => void runActionDialog()}>{actionDialog?.confirmLabel ?? 'Confirm'}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -686,8 +686,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             {editBranch && <Field label="Last updated"><Input value={branchForm.updatedAt ? new Date(branchForm.updatedAt).toLocaleString() : '—'} readOnly /></Field>}
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={branchSaving} onClick={() => { setBranchModal(false); setEditBranch(null) }}>Cancel</Button>
-            <Button loading={branchSaving} onClick={() => void saveBranch()}>{editBranch ? 'Save changes' : 'Create branch'}</Button>
+            <Button variant="outline" icon={X} disabled={branchSaving} onClick={() => { setBranchModal(false); setEditBranch(null) }}>Cancel</Button>
+            <Button icon={editBranch ? Save : Plus} loading={branchSaving} onClick={() => void saveBranch()}>{editBranch ? 'Save changes' : 'Create branch'}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -718,8 +718,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             </Field>
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
-            <Button loading={staffSaving} onClick={() => void saveStaff()}>Create staff</Button>
+            <Button variant="outline" icon={X} disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
+            <Button icon={Plus} loading={staffSaving} onClick={() => void saveStaff()}>Create staff</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -742,8 +742,8 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             </Field>
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={editStaffSaving} onClick={() => setEditStaff(null)}>Cancel</Button>
-            <Button loading={editStaffSaving} onClick={() => void saveEditStaff()}>Save changes</Button>
+            <Button variant="outline" icon={X} disabled={editStaffSaving} onClick={() => setEditStaff(null)}>Cancel</Button>
+            <Button icon={Save} loading={editStaffSaving} onClick={() => void saveEditStaff()}>Save changes</Button>
           </div>
         </DialogContent>
       </Dialog>
