@@ -396,7 +396,7 @@ router.post('/loans/:id/request-plan', requirePermission('loans.accounts.manage'
 }))
 
 router.post('/loans/:id/apply-plan', requirePermission('loans.accounts.manage'), asyncRoute(async (request: AuthRequest, response) => {
-  const parsed = z.object({ type: z.enum(['reschedule','payment_plan']), reason: z.string().min(3), months: z.number().int().min(1).max(60).default(1), startDate: z.string().optional() }).parse(request.body)
+  const parsed = z.object({ type: z.enum(['reschedule','payment_plan']), reason: z.string().min(3), count: z.number().int().min(1).max(365).optional(), months: z.number().int().min(1).max(60).optional(), unit: z.enum(['day','month']).optional(), startDate: z.string().optional() }).parse(request.body)
   const user = currentUser(request)
   const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
   if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
@@ -406,27 +406,32 @@ router.post('/loans/:id/apply-plan', requirePermission('loans.accounts.manage'),
   if (!pending.length) throw new HttpError(409, 'NO_PENDING_SCHEDULE', 'No pending schedule installments were found for this loan.')
   const now = parsed.startDate ? new Date(parsed.startDate) : new Date()
   if (Number.isNaN(now.getTime())) throw new HttpError(400, 'INVALID_START_DATE', 'Start date is invalid.')
+  const freq = String((loan as any).productSnapshot?.repaymentFrequency ?? 'monthly')
+  const unit = parsed.unit ?? (freq === 'daily' ? 'day' : 'month')
+  const rawCount = parsed.count ?? parsed.months ?? 1
+  const count = Math.max(1, Math.min(unit === 'day' ? 365 : 60, rawCount))
+  const addUnit = (d: Date, n: number) => { const x = new Date(d); if (unit === 'day') x.setDate(x.getDate() + n); else x.setMonth(x.getMonth() + n); return x }
   if (parsed.type === 'reschedule') {
-    const shiftMs = parsed.months * 30 * 24 * 60 * 60 * 1000
-    for (const row of pending) { row.dueDate = new Date(new Date(row.dueDate).getTime() + shiftMs); if (row.status === 'overdue') row.status = 'pending'; await row.save() }
+    const shift = unit === 'day' ? count : count
+    for (const row of pending) { row.dueDate = addUnit(new Date(row.dueDate), shift); if (row.status === 'overdue') row.status = 'pending'; await row.save() }
     loan.status = 'restructured'; loan.version += 1; await loan.save()
   } else {
-    // payment plan: spread pending totals into equal future installments without mutating historical paid rows
-    const total = pending.reduce((sum, r) => sum + Number(r.totalMinor || 0), 0)
-    const count = Math.max(parsed.months, 1)
-    const base = Math.floor(total / count); let rem = total - base * count
+    // payment plan: preserve pending total and split principal/interest/fees proportionally; daily-friendly installment count
+    const totals = pending.reduce((a, r) => ({ p: a.p + Number(r.principalMinor||0), i: a.i + Number(r.interestMinor||0), f: a.f + Number(r.feesMinor||0), t: a.t + Number(r.totalMinor||0) }), { p:0,i:0,f:0,t:0 })
+    const split = (total: number) => { const base = Math.floor(total / count); let rem = total - base * count; return Array.from({length: count}, () => { const v = base + (rem > 0 ? 1 : 0); rem = Math.max(0, rem - 1); return v }) }
+    const ps = split(totals.p), ints = split(totals.i), fs = split(totals.f)
     await RepaymentScheduleModel.deleteMany({ tenantId: user.tenantId, loanAccountId: loan.id, status: { $in: ['pending','partially_paid','overdue'] } })
     const rows = Array.from({ length: count }, (_, i) => {
-      const amountMinor = base + (rem > 0 ? 1 : 0); rem = Math.max(0, rem - 1)
-      const dueDate = new Date(now); dueDate.setMonth(dueDate.getMonth() + i + 1)
-      return { tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, installmentNumber: i + 1, dueDate, principalMinor: amountMinor, interestMinor: 0, feesMinor: 0, totalMinor: amountMinor, status: 'pending' }
+      const totalMinor = (ps[i] ?? 0) + (ints[i] ?? 0) + (fs[i] ?? 0)
+      return { tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, installmentNumber: i + 1, dueDate: addUnit(now, i + 1), principalMinor: ps[i] ?? 0, interestMinor: ints[i] ?? 0, feesMinor: fs[i] ?? 0, totalMinor, status: 'pending' }
     })
     await RepaymentScheduleModel.insertMany(rows)
     loan.status = 'restructured'; loan.version += 1; await loan.save()
   }
-  await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: parsed.type === 'reschedule' ? 'rescheduled' : 'payment_plan_applied', reason: parsed.reason, metadata: { months: parsed.months, startDate: now.toISOString(), affected: pending.length }, createdBy: user.id })
-  await recordAudit({ user, action: parsed.type === 'reschedule' ? 'loan.rescheduled' : 'loan.payment_plan_applied', entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: { months: parsed.months, affected: pending.length, reason: parsed.reason } })
-  response.json({ success: true, message: parsed.type === 'reschedule' ? 'Loan schedule rescheduled' : 'Payment plan applied to pending schedule', data: { loanId: loan.id, affected: pending.length } })
+  await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: parsed.type === 'reschedule' ? 'rescheduled' : 'payment_plan_applied', reason: parsed.reason, metadata: { count, unit, frequency: freq, startDate: now.toISOString(), affected: pending.length }, createdBy: user.id })
+  await recordAudit({ user, action: parsed.type === 'reschedule' ? 'loan.rescheduled' : 'loan.payment_plan_applied', entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: { count, unit, affected: pending.length, reason: parsed.reason } })
+  const plural = count === 1 ? '' : 's'
+  response.json({ success: true, message: parsed.type === 'reschedule' ? `Loan schedule rescheduled by ${count} ${unit}${plural}` : `Payment plan applied: ${count} ${unit} installment${plural}`, data: { loanId: loan.id, affected: pending.length, count, unit } })
 }))
 
 router.get('/payments/:id/receipt', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
@@ -434,7 +439,8 @@ router.get('/payments/:id/receipt', requirePermission('repayments.capture'), asy
   const payment = await PaymentModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name phone customerNumber' } }).lean()
   if (!payment) throw new HttpError(404, 'PAYMENT_NOT_FOUND', 'Repayment was not found.')
   assertBranchAccess(request, (payment as any).branchId)
-  response.type('text/html').send(`<!doctype html><html><head><meta charset="utf-8"><title>Payment receipt ${String((payment as any).reference||payment._id)}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}h1{margin:0 0 4px}.muted{color:#64748b}.grid{display:grid;grid-template-columns:180px 1fr;gap:8px;margin-top:16px}button{margin-top:16px;padding:8px 12px}</style></head><body><h1>LendFlow Payment Receipt</h1><div class="muted">Generated ${new Date().toISOString()}</div><div class="grid"><div>Receipt/Reference</div><div>${String((payment as any).reference||payment._id)}</div><div>Customer</div><div>${String((payment as any).loanAccountId?.customerId?.name||'—')}</div><div>Loan</div><div>${String((payment as any).loanAccountId?._id||'—')}</div><div>Amount</div><div>UGX ${(Number((payment as any).amountMinor||0)/100).toLocaleString()}</div><div>Method</div><div>${String((payment as any).method||'—')}</div><div>Status</div><div>${String((payment as any).status||'—')}</div><div>Date</div><div>${new Date((payment as any).createdAt||Date.now()).toLocaleString()}</div></div><button onclick="window.print()">Print / Save as PDF</button></body></html>`)
+  const amount = (Number((payment as any).amountMinor || 0) / 100).toLocaleString()
+  response.type('text/html').send(`<!doctype html><html><head><meta charset="utf-8"><title>Payment receipt ${String((payment as any).reference || payment._id)}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}h1{margin:0 0 4px}.muted{color:#64748b}.grid{display:grid;grid-template-columns:180px 1fr;gap:8px;margin-top:16px}button{margin-top:16px;padding:8px 12px}</style></head><body><h1>LendFlow Payment Receipt</h1><div class="muted">Generated ${new Date().toISOString()}</div><div class="grid"><div>Receipt/Reference</div><div>${String((payment as any).reference || payment._id)}</div><div>Customer</div><div>${String((payment as any).loanAccountId?.customerId?.name || '—')}</div><div>Loan</div><div>${String((payment as any).loanAccountId?._id || '—')}</div><div>Amount</div><div>UGX ${amount}</div><div>Method</div><div>${String((payment as any).method || '—')}</div><div>Status</div><div>${String((payment as any).status || '—')}</div><div>Date</div><div>${new Date((payment as any).createdAt || Date.now()).toLocaleString()}</div></div><button onclick="window.print()">Print / Save as PDF</button></body></html>`)
 }))
 
 router.get('/loans/:id/statement/export', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {

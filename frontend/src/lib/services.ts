@@ -534,8 +534,8 @@ export const api = {
     apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify({ body, kind }) }),
   addApplicationAttachment: (id: string, input: { name: string; reference: string; kind?: string }) =>
     apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
-  applyLoanPlan: (id: string, type: 'reschedule' | 'payment_plan', reason: string, months = 1, startDate?: string) =>
-    apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/apply-plan`, { method: 'POST', body: JSON.stringify({ type, reason, months, ...(startDate ? { startDate } : {}) }) }),
+  applyLoanPlan: (id: string, type: 'reschedule' | 'payment_plan', reason: string, count = 1, unit: 'day' | 'month' = 'day', startDate?: string) =>
+    apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/apply-plan`, { method: 'POST', body: JSON.stringify({ type, reason, count, unit, ...(startDate ? { startDate } : {}) }) }),
 
   authorizeDisbursement: (input: { loanAccountId: string; applicationId: string; branchId?: string; amount: number; method?: string; reference?: string; notes?: string; idempotencyKey: string }) =>
     apiRequest(`/api/v1/finance/disbursements/authorize`, { method: 'POST', body: JSON.stringify({ applicationId: input.applicationId, loanAccountId: input.loanAccountId, branchId: input.branchId ?? branchId(), amountMinor: toMinor(input.amount), method: input.method, reference: input.reference, notes: input.notes, idempotencyKey: input.idempotencyKey }) }),

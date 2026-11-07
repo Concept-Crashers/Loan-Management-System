@@ -143,10 +143,10 @@ export const pageRegistry: Record<string, PageDefinition> = {
     stats: [],
   },
   '/repayments': {
-    title: 'Repayments',
-    subtitle: 'Review payments collected across mobile money, bank transfer and cash.',
+    title: 'Repayments / daily collections',
+    subtitle: 'Record and review daily collections and other payments across mobile money, bank transfer and cash.',
     newTo: '/repayments/new',
-    newLabel: 'Record repayment',
+    newLabel: 'Record collection/payment',
     detailBase: '/repayments',
     detailKey: 'id',
     filterKey: 'method',

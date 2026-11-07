@@ -16,6 +16,15 @@ router.get('/', requirePermission('collections.view'), asyncRoute(async (request
   const data = await CollectionModel.populate(result.data, { path: 'loanAccountId', populate: { path: 'customerId', select: 'name phone customerNumber' } })
   response.json({ success: true, message: 'Collection cases retrieved successfully', data, meta: result.meta })
 }))
+router.post('/', requirePermission('collections.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ loanAccountId: z.string().min(1), branchId: z.string().min(1), assignedTo: z.string().min(1), assignedToName: z.string().trim().max(120).optional(), status: z.enum(['open', 'contacted', 'promise_to_pay', 'escalated', 'resolved']).default('open'), followUpAt: z.coerce.date().optional(), promiseAmountMinor: z.number().int().nonnegative().optional(), promiseDueAt: z.coerce.date().optional(), notes: z.string().max(2000).default(''), slaDueAt: z.coerce.date().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const now = new Date()
+  const collection = await CollectionModel.create({ ...input, tenantId: user.tenantId, assignedToName: input.assignedToName ?? '', followUpAt: input.followUpAt ?? new Date(now.getTime() + 24 * 60 * 60 * 1000), slaDueAt: input.slaDueAt ?? new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000), lastActionAt: now, history: [{ actorId: user.id, action: 'created', ...input, at: now }] })
+  await recordAudit({ user, action: 'collection.created', entityType: 'collection_case', entityId: collection.id, branchId: collection.branchId, next: input })
+  response.status(201).json({ success: true, message: 'Collection case created', data: collection })
+}))
+
 router.patch('/:id', requirePermission('collections.manage'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ status: z.enum(['open', 'contacted', 'promise_to_pay', 'escalated', 'resolved']).optional(), assignedTo: z.string().trim().min(1).optional(), assignedToName: z.string().trim().max(120).optional(), followUpAt: z.coerce.date().optional(), promiseAmountMinor: z.number().int().nonnegative().optional(), promiseDueAt: z.coerce.date().optional(), notes: z.string().max(2000).optional(), slaDueAt: z.coerce.date().optional() }).parse(request.body)
   const user = currentUser(request)
