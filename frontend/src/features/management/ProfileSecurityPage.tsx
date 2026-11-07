@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, KeyRound, LockKeyhole, MonitorSmartphone, Save, ShieldCheck } from 'lucide-react'
+import { Check, Eye, EyeOff, KeyRound, LockKeyhole, MonitorSmartphone, Save, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useDispatch, useSelector } from 'react-redux'
@@ -7,6 +7,7 @@ import { Button, Card, Field, IconInput, Input, PasswordInput, Select } from '..
 import { changePassword, disableMfa, enableMfa, getMe, startMfaEnrollment, updateProfile, logout } from '../../lib/api'
 import { setUser, type RootState } from '../../store/store'
 import { PhoneNumberInput } from '../../components/ui/PhoneNumberInput'
+import { getHideAmounts, setHideAmounts } from '../../lib/format'
 
 export function ProfileSecurityPage() {
   const dispatch = useDispatch()
@@ -24,6 +25,7 @@ export function ProfileSecurityPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [hideAmounts, setHideAmountsState] = useState(getHideAmounts())
 
   useEffect(() => {
     let alive = true
@@ -102,6 +104,12 @@ export function ProfileSecurityPage() {
         <div className="security-toggle-row" style={{ marginTop: 12 }}><span className="security-toggle-icon"><LockKeyhole size={16} /></span><span><strong>Multi-factor authentication</strong><small>Configure here (not on sign-in). Enrollment requires an authenticator code.</small>{mfaSecret && <small>Setup secret: <code style={{ userSelect: 'all' }}>{mfaSecret}</code></small>}</span><button type="button" className={`toggle-switch ${mfaEnabled ? 'toggle-on' : ''}`} role="switch" aria-checked={mfaEnabled} onClick={() => void toggleMfa()}><span /></button></div>
         {(mfaSecret || mfaEnabled) && <Field label={mfaEnabled ? 'Authenticator code to disable MFA' : 'Authenticator code to confirm MFA'}><Input inputMode="numeric" pattern="[0-9]{6}" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} placeholder="6-digit code" /></Field>}
         <div className="settings-panel-footer"><span>{mfaEnabled ? 'MFA is enabled.' : mfaSecret ? 'Enter a code from your authenticator to enable MFA.' : 'MFA is disabled.'}</span></div>
+      </Card>
+
+      <Card className="settings-panel">
+        <div className="settings-panel-header"><div className="settings-panel-icon">{hideAmounts ? <EyeOff size={18} /> : <Eye size={18} />}</div><div><h2>Privacy & display</h2><p>Control whether monetary amounts are visible on cards and summaries in this browser.</p></div></div>
+        <div className="security-toggle-row"><span className="security-toggle-icon">{hideAmounts ? <EyeOff size={16} /> : <Eye size={16} />}</span><span><strong>Hide amounts</strong><small>When enabled, monetary values shown by the app (cards, summaries, tables using formatted amounts) appear as ****.</small></span><button type="button" className={`toggle-switch ${hideAmounts ? 'toggle-on' : ''}`} role="switch" aria-checked={hideAmounts} onClick={() => { const next = !hideAmounts; setHideAmounts(next); setHideAmountsState(next); toast.success(next ? 'Amounts hidden' : 'Amounts visible', { description: 'Refresh pages if some values are already rendered.' }) }}><span /></button></div>
+        <div className="settings-panel-footer"><span>Saved to this browser. Reload open pages to apply everywhere.</span></div>
       </Card>
 
       <Card className="settings-panel profile-sessions-panel">
