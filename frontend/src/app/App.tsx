@@ -41,6 +41,7 @@ export function App() {
       <Route path="customers/:id" element={<RecordDetailPage />} />
       <Route path="products" element={<PageForPath path="/products" />} />
       <Route path="products/new" element={<ProductForm />} />
+      <Route path="products/:id/edit" element={<ProductForm />} />
       <Route path="products/:id" element={<RecordDetailPage />} />
       <Route path="applications" element={<PageForPath path="/applications" />} />
       <Route path="applications/new" element={<ApplicationWizard />} />

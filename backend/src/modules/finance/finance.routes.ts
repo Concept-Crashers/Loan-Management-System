@@ -366,4 +366,15 @@ router.post('/disbursements/:id/cancel', requirePermission('loans.disburse.autho
   response.json({ success: true, message: 'Disbursement cancelled', data: disbursement })
 }))
 
+
+router.post('/loans/:id/request-plan', requirePermission('loans.accounts.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ type: z.enum(['reschedule_request','payment_plan_request']), reason: z.string().min(3), requestedDate: z.string().optional(), notes: z.string().max(1000).optional() }).parse(request.body)
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId, ...(user.branchIds.length ? { branchId: { $in: user.branchIds } } : {}) })
+  if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
+  await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: parsed.type, reason: parsed.reason, metadata: { requestedDate: parsed.requestedDate, notes: parsed.notes }, createdBy: user.id })
+  await recordAudit({ user, action: parsed.type, entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: parsed })
+  response.json({ success: true, message: parsed.type === 'reschedule_request' ? 'Reschedule request recorded' : 'Payment plan request recorded', data: { loanId: loan.id } })
+}))
+
 export default router

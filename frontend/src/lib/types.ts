@@ -115,6 +115,9 @@ export interface CollectionRecord {
   officer: string
   status: 'Not Contacted' | 'Contacted' | 'Awaiting Response' | 'Payment Arrangement Recorded' | 'Escalated for Review' | 'Resolved'
   note: string
+  assignedTo?: string
+  promiseAmount?: number
+  promiseDueAt?: string
 }
 
 export interface Transaction {

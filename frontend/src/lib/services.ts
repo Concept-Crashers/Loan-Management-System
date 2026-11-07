@@ -251,9 +251,12 @@ export const api = {
         lastPayment: String(record.createdAt ?? '').slice(0, 10),
         followUp: String(record.followUpAt ?? '').slice(0, 10),
         officer: String(record.assignedTo ?? 'Collections Officer'),
-        status: record.status === 'resolved' ? 'Resolved' : record.status === 'contacted' ? 'Contacted' : record.status === 'promise_to_pay' ? 'Payment Arrangement Recorded' : 'Not Contacted',
+        status: record.status === 'resolved' ? 'Resolved' : record.status === 'contacted' ? 'Contacted' : record.status === 'promise_to_pay' ? 'Payment Arrangement Recorded' : record.status === 'escalated' ? 'Escalated for Review' : record.status === 'open' ? 'Awaiting Response' : 'Not Contacted',
         note: String(record.notes ?? ''),
         phone: loanObj?.customerId?.phone ?? '',
+        assignedTo: String(record.assignedTo ?? ''),
+        promiseAmount: fromMinor(Number(record.promiseAmountMinor ?? 0)),
+        promiseDueAt: String(record.promiseDueAt ?? '').slice(0, 10),
       }
     })
   },
@@ -482,8 +485,8 @@ export const api = {
       }),
     }),
 
-  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string }) => {
-    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }
+  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string; idempotencyKey?: string }) => {
+    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.idempotencyKey || input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }
     const auth = await apiRequest<any>('/api/v1/finance/disbursements', { method: 'POST', body: JSON.stringify(payload) })
     const authId = auth?.id ?? auth?._id ?? auth?.data?.id ?? auth?.data?._id
     if (!authId) return auth
@@ -510,6 +513,8 @@ export const api = {
 
   loanLifecycle: (id: string, type: 'restructure' | 'refinance' | 'write_off' | 'settle' | 'penalty', reason: string) =>
     apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/lifecycle`, { method: 'POST', body: JSON.stringify({ type, reason }) }),
+  requestLoanPlan: (id: string, type: 'reschedule_request' | 'payment_plan_request', reason: string, extra: { requestedDate?: string; notes?: string } = {}) =>
+    apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/request-plan`, { method: 'POST', body: JSON.stringify({ type, reason, ...extra }) }),
 
   authorizeDisbursement: (input: { loanId: string; applicationId: string; amount: number; method: string; reference?: string; idempotencyKey: string }) =>
     apiRequest(`/api/v1/finance/disbursements/authorize`, { method: 'POST', body: JSON.stringify({ ...input, amountMinor: toMinor(input.amount) }) }),

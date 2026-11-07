@@ -113,6 +113,9 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer' })
   const [editStaffSaving, setEditStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
+  const [followupStatus, setFollowupStatus] = useState<'contacted' | 'promise_to_pay' | 'escalated' | 'resolved' | 'open'>('contacted')
+  const [followupAssignedTo, setFollowupAssignedTo] = useState('')
+  const [followupPromiseDate, setFollowupPromiseDate] = useState('')
   const [scheduleView, setScheduleView] = useState<'list' | 'calendar'>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => new Date())
   const [sort, setSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
@@ -283,8 +286,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   async function saveFollowup() {
     if (!selected) return
     try {
-      await api.updateCollectionFollowup(String(selected.id), followupNote.trim(), 'contacted')
-      toast.success('Follow-up record saved')
+      await api.updateCollection(String(selected.id), { status: followupStatus, notes: [followupAssignedTo.trim() ? `Assigned officer: ${followupAssignedTo.trim()}` : '', followupNote.trim()].filter(Boolean).join('\n'), ...(followupPromiseDate ? { promiseDueAt: followupPromiseDate, followUpAt: followupPromiseDate } : {}) })
+      toast.success('Collection case updated')
       setSelected(null)
       void loadData()
     } catch (error) {
@@ -481,6 +484,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Refinance loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Refinance reason', confirmLabel: 'Refinance', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'refinance', reason); toast.success('Loan refinanced') } })}>Refinance</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Apply penalty', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Penalty reason', confirmLabel: 'Apply penalty', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'penalty', reason); toast.success('Penalty applied') } })}>Apply penalty</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Settle loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Settlement reason', confirmLabel: 'Settle loan', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'settle', reason); toast.success('Loan settled') } })}>Settle loan</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Request reschedule', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Reschedule reason/request', confirmLabel: 'Record request', run: async (reason) => { await api.requestLoanPlan(String(row.id ?? row.ref), 'reschedule_request', reason); toast.success('Reschedule request recorded') } })}>Request reschedule</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Request payment plan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Payment plan request', confirmLabel: 'Record request', run: async (reason) => { await api.requestLoanPlan(String(row.id ?? row.ref), 'payment_plan_request', reason); toast.success('Payment plan request recorded') } })}>Request payment plan</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Write off loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Write-off reason', confirmLabel: 'Write off loan', danger: true, run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'write_off', reason); toast.success('Loan written off') } })}>Write off</DropdownMenu.Item>
                                 </>
                               )}
@@ -494,13 +499,15 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               {path === '/schedules' && (
                                 <>
                                   <DropdownMenu.Item className="dropdown-item" onClick={undefined as any} onSelect={() => { const loan = String(row.loan ?? ''); if (!loan) { toast.info('Loan reference is unavailable for this schedule.'); return } navigate(`/loans/${encodeURIComponent(loan)}`) }}>Open loan</DropdownMenu.Item>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(`Schedule follow-up for ${String(row.customer ?? 'customer')} due ${String(row.due ?? '')}`); setSelected(row) }}>Record follow-up note</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(`Schedule follow-up for ${String(row.customer ?? 'customer')} due ${String(row.due ?? '')}`); setFollowupStatus('contacted'); setFollowupAssignedTo(String(row.officer ?? '')); setFollowupPromiseDate(''); setSelected(row) }}>Record follow-up note</DropdownMenu.Item>
                                 </>
                               )}
                               {path === '/collections' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Record promise to pay', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Promise/follow-up notes', confirmLabel: 'Save promise', defaultReason: String(row.note ?? 'Promise to pay recorded'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'promise_to_pay', notes: reason }); toast.success('Promise to pay recorded') } })}>Promise to pay</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setFollowupStatus((String(row.status ?? '').toLowerCase().includes('resolved') ? 'resolved' : String(row.status ?? '').toLowerCase().includes('escalat') ? 'escalated' : String(row.status ?? '').toLowerCase().includes('arrangement') || String(row.status ?? '').toLowerCase().includes('promise') ? 'promise_to_pay' : 'contacted') as any); setFollowupAssignedTo(String(row.assignedTo ?? row.officer ?? '')); setFollowupPromiseDate(String(row.promiseDueAt ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Record promise to pay', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}. Include amount/date in notes if needed.`, reasonLabel: 'Promise details (amount, due date, notes)', confirmLabel: 'Save promise', defaultReason: String(row.note ?? 'Promise to pay recorded'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'promise_to_pay', notes: reason, followUpAt: new Date(Date.now()+7*86400000).toISOString() }); toast.success('Promise to pay recorded') } })}>Promise to pay</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Assign collection officer', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Assigned officer/user ID or name (recorded in notes)', confirmLabel: 'Save assignment', defaultReason: String(row.assignedTo ?? row.officer ?? ''), run: async (reason) => { await api.updateCollection(String(row.id), { notes: `Assigned: ${reason}` + (row.note ? `
+${row.note}` : ''), status: String(row.status ?? '').includes('Resolved') ? 'resolved' : 'contacted' }); toast.success('Assignment note saved') } })}>Assign officer</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Escalate collection', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Escalation notes', confirmLabel: 'Escalate case', defaultReason: String(row.note ?? 'Escalated for follow-up'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'escalated', notes: reason }); toast.success('Collection escalated') } })}>Escalate</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Resolve collection', description: `${String(row.customer ?? 'Customer')} · ${String(row.loan ?? '')}`, reasonLabel: 'Resolution notes', confirmLabel: 'Resolve case', defaultReason: String(row.note ?? 'Collection resolved'), run: async (reason) => { await api.updateCollection(String(row.id), { status: 'resolved', notes: reason }); toast.success('Collection resolved') } })}>Resolve case</DropdownMenu.Item>
                                 </>
@@ -581,8 +588,16 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
             <div className="followup-note">
               <span>Previous note</span>
               <p>{String(selected?.note ?? 'No notes recorded yet.')}</p>
-              <span>New interaction note</span>
-              <Input value={followupNote} placeholder="Record interaction details…" onChange={(event) => setFollowupNote(event.target.value)} maxLength={500} />
+              <span>Status / action</span>
+              <Select value={followupStatus} onChange={(e) => setFollowupStatus(e.target.value as any)}>
+                <option value="contacted">Contacted</option><option value="promise_to_pay">Promise to pay</option><option value="escalated">Escalated</option><option value="resolved">Resolved</option><option value="open">Open / awaiting response</option>
+              </Select>
+              <span>Assigned officer</span>
+              <Input value={followupAssignedTo} placeholder="Officer name or user ID" onChange={(event) => setFollowupAssignedTo(event.target.value)} maxLength={120} />
+              <span>Promise / follow-up date</span>
+              <Input type="date" value={followupPromiseDate} onChange={(event) => setFollowupPromiseDate(event.target.value)} />
+              <span>Interaction / promise details</span>
+              <Textarea rows={4} value={followupNote} placeholder="Record interaction details, promise amount/date, and next steps…" onChange={(event) => setFollowupNote(event.target.value)} maxLength={1000} />
             </div>
           )}
           <div className="dialog-actions">

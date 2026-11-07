@@ -11,7 +11,7 @@ import type { RootState } from '../store/store'
 
 const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
   customers: { endpoint: 'customers', entity: 'customer', back: '/customers', title: 'Customer', editPath: (id) => `/customers/${id}/edit` },
-  products: { endpoint: 'products', entity: 'loan_product', back: '/products', title: 'Loan product' },
+  products: { endpoint: 'products', entity: 'loan_product', back: '/products', title: 'Loan product', editPath: (id) => `/products/${id}/edit` },
   applications: { endpoint: 'applications', entity: 'loan_application', back: '/applications', title: 'Loan application' },
   loans: { endpoint: 'loans', entity: 'loan_account', back: '/loans', title: 'Loan account' },
   repayments: { endpoint: 'payments', entity: 'repayment', back: '/repayments', title: 'Repayment' },
@@ -155,7 +155,11 @@ export function RecordDetailPage() {
         {segment === 'repayments' && String(record?.status ?? '') === 'pending_verification' ? <Button onClick={async () => { try { await api.confirmRepayment(String(record?._id ?? id)); toast.success('Repayment confirmed'); await load() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</Button> : null}
         {segment === 'repayments' && String(record?.status ?? '') === 'confirmed' ? <Button variant="danger" onClick={() => setAction({ title: 'Reverse repayment', desc: 'Reverse this confirmed payment with a clear audit reason.', label: 'Reverse payment', danger: true, run: async (reason) => { await api.reverseRepayment(String(record?._id ?? id), reason); toast.success('Repayment reversed'); await load() } })}>Reverse payment</Button> : null}
         {segment === 'loans' && String(record?.status ?? '') === 'pending_disbursement' ? <Button onClick={() => navigate(`/disbursements/new?loan=${encodeURIComponent(String(record?._id ?? id))}`)}>Disburse loan</Button> : null}
-        <Button variant="outline" icon={Download} onClick={() => toast.info('Use the available report export for structured downloads.')}>Export</Button>
+        <Button variant="outline" icon={Download} onClick={() => {
+          if (segment === 'loans') { import('../lib/api').then(({ exportLedger }) => exportLedger()).catch(() => {}); toast.info('Ledger export started. Use Reports for filtered exports.'); return }
+          const rows = [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))]; const headers = Object.keys(rows[0] ?? {}); const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => `"${String((r as any)[h] ?? '').replaceAll('"','""')}"`).join(','))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `${segment}-${String(record?._id ?? id)}.csv`; a.click(); URL.revokeObjectURL(a.href)
+        }}>Export</Button>
+        <Button variant="outline" onClick={() => window.print()}>Print / receipt</Button>
       </div>
     </div>
     <Card className="detail-info-card">
