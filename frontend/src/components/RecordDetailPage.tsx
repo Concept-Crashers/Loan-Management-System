@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Download, FileText, LockKeyhole, Pencil, RefreshCw, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Download, FileText, LockKeyhole, Pencil, RefreshCw, ShieldCheck, TrendingUp } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
-import { getRecordDetail, listEntityAudit, type AuditEvent } from '../lib/api'
+import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { api } from '../lib/services'
 import type { RootState } from '../store/store'
 
@@ -71,8 +71,11 @@ export function RecordDetailPage() {
   const [saving, setSaving] = useState(false)
   const [edit, setEdit] = useState({ amount: '', duration: '', purpose: '', income: '', obligations: '' })
   const [statement, setStatement] = useState<Record<string, any> | null>(null)
+  const [credit, setCredit] = useState<CreditAssessment | null>(null)
+  const [creditLoading, setCreditLoading] = useState(false)
   const normalizedRole = role.replace(/\s/g, '').toLowerCase()
   const canViewSensitive = !['cashier', 'collectionsofficer'].includes(normalizedRole)
+  const canAssessCredit = ['superadmin','admin','manager','approver','creditofficer','loanofficer'].includes(normalizedRole) || normalizedRole.includes('admin')
 
   async function load() {
     if (!config) return
@@ -86,6 +89,11 @@ export function RecordDetailPage() {
       const minor = (k: string) => { const v = detail[k]; return typeof v === 'number' ? String(v / 100) : '' }
       setEdit({ amount: minor('amountMinor'), duration: String(detail.tenureMonths ?? ''), purpose: String(detail.purpose ?? ''), income: minor('incomeMinor'), obligations: minor('obligationsMinor') })
       if (config.endpoint === 'loans') { try { const { getLoanStatement } = await import('../lib/api'); setStatement(await getLoanStatement(String(detail._id ?? id))) } catch { setStatement(null) } } else setStatement(null)
+      try {
+        if (segment === 'applications') setCredit(await getLatestCreditAssessment({ applicationId: String(detail._id ?? id) }))
+        else if (segment === 'customers') setCredit(await getLatestCreditAssessment({ customerId: String(detail._id ?? id) }))
+        else setCredit(null)
+      } catch { setCredit(null) }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Record could not be loaded.')
     } finally {
@@ -103,6 +111,21 @@ export function RecordDetailPage() {
   const title = display(record.name ?? record.customer ?? record.reference ?? record.customerNumber ?? record._id)
   const editTo = config.editPath?.(id)
   const canEditApplication = segment === 'applications' && !!record && ['draft','submitted','under_review','assessment_required','approval_pending'].includes(String(record.status ?? ''))
+
+
+  async function runCreditScore() {
+    if (!record) return
+    setCreditLoading(true)
+    try {
+      const input = segment === 'applications'
+        ? { applicationId: String(record._id ?? id) }
+        : { customerId: String(record._id ?? id) }
+      const result = await calculateCreditScore(input)
+      setCredit(result)
+      toast.success(`Credit score calculated: ${result.score ?? '—'}/100 (${result.grade ?? '—'})`)
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Credit score could not be calculated.') }
+    finally { setCreditLoading(false) }
+  }
 
   async function saveApplication() {
     if (!record) return

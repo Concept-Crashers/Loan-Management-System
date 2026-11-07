@@ -212,3 +212,15 @@ export async function restoreSession() {
 export async function logout() {
   try { await apiRequest('/api/v1/auth/logout', { method: 'POST' }, false) } finally { setAccessToken(null); authenticatedUser = null }
 }
+
+export type CreditFactor = { code: string; label: string; impact: 'positive' | 'neutral' | 'negative'; points: number; value?: unknown }
+export type CreditAssessment = { _id: string; customerId?: string; applicationId?: string; score?: number; grade?: string; riskLevel?: 'low' | 'medium' | 'high' | 'very_high'; recommendation?: string; factors?: CreditFactor[]; riskIndicators?: string[]; source?: string; modelVersion?: string; calculatedAt?: string; createdAt?: string; version?: number; notes?: string }
+export function getLatestCreditAssessment(params: { applicationId?: string; customerId?: string }) {
+  const q = new URLSearchParams()
+  if (params.applicationId) q.set('applicationId', params.applicationId)
+  if (params.customerId) q.set('customerId', params.customerId)
+  return apiRequest<CreditAssessment | null>(`/api/v1/credit-assessments/latest?${q.toString()}`)
+}
+export function calculateCreditScore(input: { applicationId?: string; customerId?: string }) {
+  return apiRequest<CreditAssessment>('/api/v1/credit-assessments/calculate', { method: 'POST', body: JSON.stringify(input) })
+}
