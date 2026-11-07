@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { requireAuth, requirePermission, type AuthRequest } from '../../core/auth.js'
 import { asyncRoute, HttpError } from '../../core/http.js'
-import { assertBranchAccess, currentUser } from '../../core/scope.js'
+import { assertBranchAccess, branchFilter, currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { TenantSettingsModel } from '../organisation/settings.model.js'
 import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, CashbookModel, LoanEventModel, ChartAccountModel, AccountingPeriodModel, RepaymentScheduleModel } from './finance.model.js'
@@ -49,9 +49,8 @@ router.get('/payments/:id', requirePermission('repayments.capture'), asyncRoute(
 router.get('/loans', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
-  if (branchId) assertBranchAccess(request, branchId)
   const page = pagination(request)
-  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }
+  const filter = { tenantId: user.tenantId, ...branchFilter(request, branchId) }
   const result = await paged(LoanAccountModel, filter, page)
   const data = await LoanAccountModel.find(filter).populate('customerId', 'name customerNumber').sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
   response.json({ success: true, message: 'Loan accounts retrieved successfully', data: data.map((loan) => {
@@ -62,9 +61,8 @@ router.get('/loans', requirePermission('loans.accounts.view'), asyncRoute(async 
 router.get('/payments', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
-  if (branchId) assertBranchAccess(request, branchId)
   const page = pagination(request)
-  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }), ...(request.query.status ? { status: String(request.query.status) } : {}) }
+  const filter = { tenantId: user.tenantId, ...branchFilter(request, branchId), ...(request.query.status ? { status: String(request.query.status) } : {}) }
   const result = await paged(PaymentModel, filter, page)
   const data = await PaymentModel.find(filter).populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name customerNumber' } }).sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
   response.json({ success: true, message: 'Repayments retrieved successfully', data, meta: result.meta })
@@ -72,8 +70,7 @@ router.get('/payments', requirePermission('repayments.capture'), asyncRoute(asyn
 router.get('/schedules', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
-  if (branchId) assertBranchAccess(request, branchId)
-  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }
+  const filter = { tenantId: user.tenantId, ...branchFilter(request, branchId) }
   const data = await RepaymentScheduleModel.find(filter)
     .populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name customerNumber' } })
     .sort({ dueDate: 1 })
@@ -84,15 +81,13 @@ router.get('/schedules', requirePermission('loans.accounts.view'), asyncRoute(as
 router.get('/journal', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
-  if (branchId) assertBranchAccess(request, branchId)
-  const result = await paged(JournalModel, { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }) }, pagination(request))
+  const result = await paged(JournalModel, { tenantId: user.tenantId, ...branchFilter(request, branchId) }, pagination(request))
   response.json({ success: true, message: 'Journal entries retrieved successfully', ...result })
 }))
 router.get('/ledger', requirePermission('accounting.journal.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
-  if (branchId) assertBranchAccess(request, branchId)
-  const filter = { tenantId: user.tenantId, ...(branchId ? { branchId } : { branchId: { $in: user.branchIds } }), ...(request.query.periodId ? { periodId: request.query.periodId } : {}), ...(request.query.account ? { 'lines.account': String(request.query.account) } : {}) }
+  const filter = { tenantId: user.tenantId, ...branchFilter(request, branchId), ...(request.query.periodId ? { periodId: request.query.periodId } : {}), ...(request.query.account ? { 'lines.account': String(request.query.account) } : {}) }
   const result = await paged(JournalModel, filter, pagination(request), { postedAt: 1 })
   response.json({ success: true, message: 'General ledger retrieved successfully', ...result })
 }))
@@ -231,20 +226,24 @@ router.post('/journal', requirePermission('accounting.journal.create'), asyncRou
   response.status(201).json({ success: true, message: 'Journal entry created', data: entry })
 }))
 router.post('/payments', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ branchId: z.string(), loanAccountId: z.string(), reference: z.string().min(3), amountMinor: z.number().int().positive(), method: z.string().min(2) }).parse(request.body)
+  const input = z.object({ branchId: z.string(), loanAccountId: z.string(), reference: z.string().trim().optional(), amountMinor: z.number().int().positive(), method: z.string().min(2) }).parse(request.body)
   const user = currentUser(request)
   assertBranchAccess(request, input.branchId)
   const loan = await LoanAccountModel.findOne({ _id: input.loanAccountId, tenantId: user.tenantId, branchId: input.branchId })
   if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found in the selected branch.')
-  const existing = await PaymentModel.findOne({ tenantId: user.tenantId, reference: input.reference })
+  const method = input.method.trim()
+  const isCash = /^cash$/i.test(method)
+  const reference = (input.reference?.trim() || (isCash ? `CASH-RCT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` : ''))
+  if (!reference || (!isCash && reference.length < 3)) throw new HttpError(400, 'REFERENCE_REQUIRED', 'A transaction/reference number is required for non-cash payments.')
+  const existing = await PaymentModel.findOne({ tenantId: user.tenantId, reference })
   if (existing) throw new HttpError(409, 'DUPLICATE_PAYMENT', 'This payment reference already exists.')
-  const payment = await PaymentModel.create({ ...input, tenantId: user.tenantId })
+  const payment = await PaymentModel.create({ ...input, method, reference, tenantId: user.tenantId })
   await recordAudit({ user, action: 'repayment.captured', entityType: 'repayment', entityId: payment.id, branchId: input.branchId, next: { status: payment.status, amountMinor: payment.amountMinor } })
   response.status(201).json({ success: true, message: 'Repayment captured pending verification', data: payment })
 }))
 
 router.post(['/disbursements/authorize', '/disbursements'], requirePermission('loans.disburse.authorize'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ applicationId: z.string(), loanAccountId: z.string(), branchId: z.string(), amountMinor: z.number().int().positive(), idempotencyKey: z.string().min(8), method: z.string().trim().min(2).max(80).optional(), reference: z.string().trim().min(2).max(120).optional(), notes: z.string().trim().max(1000).optional() }).parse(request.body)
+  const input = z.object({ applicationId: z.string(), loanAccountId: z.string(), branchId: z.string(), amountMinor: z.number().int().positive(), idempotencyKey: z.string().min(8), method: z.string().trim().min(2).max(80).optional(), reference: z.string().trim().max(120).optional(), notes: z.string().trim().max(1000).optional() }).parse(request.body)
   const user = currentUser(request)
   assertBranchAccess(request, input.branchId)
   const existing = await DisbursementModel.findOne({ tenantId: user.tenantId, idempotencyKey: input.idempotencyKey })
@@ -256,8 +255,12 @@ router.post(['/disbursements/authorize', '/disbursements'], requirePermission('l
   const loan = await LoanAccountModel.findOne({ _id: input.loanAccountId, tenantId: user.tenantId, branchId: input.branchId, applicationId: input.applicationId })
   if (!application || application.status !== 'approved' || !loan) throw new HttpError(409, 'DISBURSEMENT_NOT_ALLOWED', 'Only an approved application with a matching loan account can be disbursed.')
   if (input.amountMinor !== loan.principalMinor || loan.status !== 'pending_disbursement') throw new HttpError(409, 'INVALID_DISBURSEMENT_AMOUNT', 'Disbursement amount or loan state is invalid.')
-  const authorization = await DisbursementModel.create({ ...input, tenantId: user.tenantId, authorizedBy: user.id, authorizedAt: new Date(), method: input.method ?? '', reference: input.reference ?? input.idempotencyKey, notes: input.notes ?? '' })
-  await recordAudit({ user, action: 'disbursement.authorized', entityType: 'disbursement', entityId: authorization.id, branchId: input.branchId, next: { amountMinor: input.amountMinor, method: input.method, reference: input.reference ?? input.idempotencyKey } })
+  const method = (input.method ?? '').trim()
+  const isCash = /^cash$/i.test(method)
+  const reference = (input.reference?.trim() || (isCash ? `CASH-DISB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` : input.idempotencyKey))
+  if (!isCash && !reference) throw new HttpError(400, 'REFERENCE_REQUIRED', 'A transaction/bank reference is required for non-cash disbursements.')
+  const authorization = await DisbursementModel.create({ ...input, tenantId: user.tenantId, authorizedBy: user.id, authorizedAt: new Date(), method, reference, notes: input.notes ?? '' })
+  await recordAudit({ user, action: 'disbursement.authorized', entityType: 'disbursement', entityId: authorization.id, branchId: input.branchId, next: { amountMinor: input.amountMinor, method, reference } })
   response.status(201).json({ success: true, message: 'Disbursement authorized', data: authorization })
 }))
 

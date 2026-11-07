@@ -506,8 +506,9 @@ export const api = {
       }),
     }),
 
-  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference: string; idempotencyKey?: string }) => {
-    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: input.idempotencyKey || input.reference, disbursedAt: input.date, method: input.method, reference: input.reference }
+  recordDisbursement: async (input: { loanRef: string; applicationId: string; branchId: string; amount: number; date: string; method: string; reference?: string; idempotencyKey?: string }) => {
+    const idem = input.idempotencyKey || input.reference || `disb-${Date.now()}`
+    const payload = { loanAccountId: input.loanRef, applicationId: input.applicationId, branchId: input.branchId, amountMinor: toMinor(input.amount), idempotencyKey: idem, disbursedAt: input.date, method: input.method, reference: input.reference }
     const auth = await apiRequest<any>('/api/v1/finance/disbursements', { method: 'POST', body: JSON.stringify(payload) })
     const authId = auth?.id ?? auth?._id ?? auth?.data?.id ?? auth?.data?._id
     if (!authId) return auth
@@ -520,10 +521,10 @@ export const api = {
     }
   },
 
-  recordRepayment: (input: { loanAccountId: string; amount: number; method: string; reference: string; branchId?: string }) =>
+  recordRepayment: (input: { loanAccountId: string; amount: number; method: string; reference?: string; branchId?: string }) =>
     apiRequest<Repayment>('/api/v1/finance/payments', {
       method: 'POST',
-      body: JSON.stringify({ branchId: input.branchId ?? branchId(), loanAccountId: input.loanAccountId, amountMinor: toMinor(input.amount), method: input.method, reference: input.reference }),
+      body: JSON.stringify({ branchId: input.branchId ?? branchId(), loanAccountId: input.loanAccountId, amountMinor: toMinor(input.amount), method: input.method, ...(input.reference ? { reference: input.reference } : {}) }),
     }),
 
   cancelApplication: (id: string, reason: string, version: number) =>
