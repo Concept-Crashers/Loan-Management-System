@@ -20,10 +20,11 @@ function sanitizePhone(raw: string) {
   return n ? `+${n}` : ''
 }
 
-function reminderMessage(name: string, balance: number, loans: LoanAccount[]) {
+function reminderMessage(name: string, balance: number, loans: LoanAccount[], senderName?: string) {
   const due = loans.find((l) => l.nextDue && !/pending/i.test(String(l.nextDue)))?.nextDue
   const ref = loans[0]?.ref
   const salutation = name?.trim() ? `Dear ${name.trim()},` : 'Dear valued customer,'
+  const from = senderName?.trim() ? `\nSent by: ${senderName.trim()} (Trust Loans)` : ''
   return [
     salutation,
     '',
@@ -34,14 +35,15 @@ function reminderMessage(name: string, balance: number, loans: LoanAccount[]) {
     'If you have already made this payment, please disregard this message. Should you need clarification or wish to discuss a payment arrangement, you may reply to this WhatsApp message or contact our office for assistance.',
     '',
     'Yours faithfully,',
-    'Trust Loans',
-    `Customer Support | ${WHATSAPP_DISPLAY}`,
+    'Trust Loans Customer Support',
+    `Office contact: ${WHATSAPP_DISPLAY}${from}`,
   ].join('\n')
 }
 
 export function QuickContactsButton() {
-  const roles = useSelector((s: RootState) => s.session.user?.roles ?? [])
-  const permissions = useSelector((s: RootState) => s.session.user?.permissions ?? [])
+  const user = useSelector((s: RootState) => s.session.user)
+  const roles = user?.roles ?? []
+  const permissions = user?.permissions ?? []
   const isPrivileged = roles.some((r) => ['super_admin', 'super-admin', 'superadmin', 'admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_'))) || permissions.includes('*') || permissions.includes('customers.view')
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -71,9 +73,10 @@ export function QuickContactsButton() {
     const balanceByIds = new Map<string, { balance: number; activeLoans: LoanAccount[] }>()
     for (const loan of loans) {
       const outstanding = Number(loan.outstanding ?? 0)
-      const isActive = ['Active', 'Overdue', 'In Arrears', 'Pending Disbursement', 'in_arrears'].includes(String(loan.status))
-      if (!isActive && outstanding <= 0) continue
-      const ids = [loan.customerId, (loan as any).customer?._id, (loan as any).customerRecordId].filter(Boolean).map(String)
+      const loanStatus = String(loan.status ?? '')
+      const isRelevant = ['Active', 'Overdue', 'In Arrears', 'Pending Disbursement', 'in_arrears'].includes(loanStatus) || outstanding > 0
+      if (!isRelevant) continue
+      const ids = [loan.customerId, (loan as any).customer?._id, (loan as any).customerRecordId, (loan as any).customer].filter(Boolean).map(String)
       ids.forEach((id) => {
         const cur = balanceByIds.get(id) ?? { balance: 0, activeLoans: [] }
         cur.balance += Math.max(0, outstanding)
@@ -82,8 +85,11 @@ export function QuickContactsButton() {
       })
     }
     return customers.map((c) => {
-      const hit = [c.recordId, c.id].filter(Boolean).map(String).map((id) => balanceByIds.get(id)).find(Boolean)
-      return { customer: c, balance: Number(c.outstanding ?? hit?.balance ?? 0), activeLoans: hit?.activeLoans ?? [] }
+      const keys = [c.recordId, c.id, c.name].filter(Boolean).map(String)
+      const hit = keys.map((id) => balanceByIds.get(id)).find((v) => v && (v.balance > 0 || v.activeLoans.length))
+      const computed = hit?.balance ?? 0
+      const fallback = Number(c.outstanding ?? 0)
+      return { customer: c, balance: computed > 0 ? computed : fallback, activeLoans: hit?.activeLoans ?? [] }
     }).sort((a, b) => b.balance - a.balance)
   }, [customers, loans])
 
@@ -115,21 +121,22 @@ export function QuickContactsButton() {
           const selected = id === selectedId
           const phone = sanitizePhone(customer.phone)
           const tel = phone.replace(/\s+/g, '')
-          const waText = encodeURIComponent(reminderMessage(customer.name, balance, activeLoans))
+          const waText = encodeURIComponent(reminderMessage(customer.name, balance, activeLoans, user?.name || user?.email))
           return <div key={id} className={`quick-contact-row ${selected ? 'is-selected' : ''}`} role="button" tabIndex={0} onClick={() => setSelectedId(id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(id) } }}>
             <div className="quick-contact-main">
               <strong>{customer.name || 'Customer'}</strong>
               <small>{customer.phone || 'No phone number'}</small>
-              <span className={`quick-contact-balance ${balance > 0 ? 'has-balance' : ''}`}>Balance: {formatUGX(balance)}</span>
+              <span className={`quick-contact-balance ${balance > 0 ? 'has-balance' : ''}`}>Outstanding balance: {formatUGX(balance)}</span>
+              {activeLoans.length > 0 && <small>{activeLoans.length} loan account{activeLoans.length === 1 ? '' : 's'}</small>}
             </div>
             {selected ? <div className="quick-contact-actions" onClick={(e) => e.stopPropagation()}>
-              <a className={`quick-contact-btn ${tel ? '' : 'is-disabled'}`} href={tel ? `tel:${tel}` : undefined} aria-disabled={!tel} title={tel ? `Call ${phone}` : 'No phone number'} onClick={(e) => !tel && e.preventDefault()}><Phone size={15} /> Call</a>
-              <a className={`quick-contact-btn whatsapp ${phone ? '' : 'is-disabled'}`} href={phone ? `https://wa.me/${phone.replace(/^\+/, '')}?text=${waText}` : undefined} target="_blank" rel="noreferrer" aria-disabled={!phone} title={phone ? `WhatsApp ${phone}` : 'No phone number'} onClick={(e) => !phone && e.preventDefault()}><MessageCircle size={15} /> WhatsApp</a>
+              <a className={`quick-contact-btn ${tel ? '' : 'is-disabled'}`} href={tel ? `tel:${tel}` : undefined} aria-disabled={!tel} title={tel ? `Call ${customer.name || 'customer'} (${phone})` : 'No phone number'} onClick={(e) => !tel && e.preventDefault()}><Phone size={15} /> Call</a>
+              <a className={`quick-contact-btn whatsapp ${phone ? '' : 'is-disabled'}`} href={phone ? `https://wa.me/${phone.replace(/^\+/, '')}?text=${waText}` : undefined} target="_blank" rel="noreferrer" aria-disabled={!phone} title={phone ? `Open WhatsApp reminder to ${customer.name || 'customer'} (${phone})` : 'No phone number'} onClick={(e) => !phone && e.preventDefault()}><MessageCircle size={15} /> WhatsApp</a>
             </div> : <div className="quick-contact-icons" aria-hidden><Phone size={15} /><MessageCircle size={15} /></div>}
           </div>
         })}
       </div>
-      <div className="quick-contacts-foot">WhatsApp opens a formal, professional balance reminder to the selected customer. Business contact: <strong>{WHATSAPP_DISPLAY}</strong>.</div>
+      <div className="quick-contacts-foot">Select a customer, then use <strong>Call</strong> or <strong>WhatsApp</strong>. WhatsApp opens a prefilled formal reminder to the customer’s number; it is sent from the WhatsApp account logged in on this device (the current staff member). Office contact: <strong>{WHATSAPP_DISPLAY}</strong>.</div>
     </div>}
   </>, document.body)
 }
