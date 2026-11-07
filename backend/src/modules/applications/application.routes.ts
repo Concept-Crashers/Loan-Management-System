@@ -10,6 +10,7 @@ import { LoanProductModel } from '../loans/loan-product.model.js'
 import { ApplicationModel } from './application.model.js'
 import { LoanAccountModel } from '../finance/finance.model.js'
 import { generateRepaymentSchedule } from '../finance/schedule.js'
+import { createDocumentUploadSignature } from '../../infrastructure/storage/cloudinary.js'
 
 const router = Router()
 const createInput = z.object({ branchId: z.string().min(1), customerId: z.string().min(1), productId: z.string().min(1), amountMinor: z.number().int().positive(), tenureMonths: z.number().int().positive(), purpose: z.string().min(5), incomeMinor: z.number().int().nonnegative(), obligationsMinor: z.number().int().nonnegative() })
@@ -169,6 +170,28 @@ router.post('/:id/attachments', requirePermission('loans.applications.create'), 
   await application.save()
   await recordAudit({ user, action: 'application.attachment_added', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: parsed })
   response.json({ success: true, message: 'Attachment reference added', data: application })
+}))
+
+router.post('/:id/attachments/upload-signature', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const input = z.object({ mimeType: z.string().min(1), size: z.number().int().positive().max(15 * 1024 * 1024) }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).lean()
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  response.json({ success: true, message: 'Application attachment upload signature created', data: createDocumentUploadSignature({ tenantId: user.tenantId, customerId: String(application._id), scope: 'applications' }) })
+}))
+
+router.post('/:id/attachments/upload', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(160), kind: z.string().trim().max(40).default('document'), reference: z.string().trim().min(1).max(300), storageKey: z.string().trim().min(3).max(300).optional(), mimeType: z.string().trim().max(120).optional(), size: z.number().int().nonnegative().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  ;(application.attachments as any[]).push({ name: parsed.name, kind: parsed.kind, reference: parsed.storageKey || parsed.reference, storageKey: parsed.storageKey, mimeType: parsed.mimeType, size: parsed.size, addedBy: user.id, addedAt: new Date() })
+  application.version += 1
+  await application.save()
+  await recordAudit({ user, action: 'application.attachment_uploaded', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { name: parsed.name, kind: parsed.kind, storageKey: parsed.storageKey || parsed.reference } })
+  response.json({ success: true, message: 'Application attachment recorded', data: application })
 }))
 
 export default router

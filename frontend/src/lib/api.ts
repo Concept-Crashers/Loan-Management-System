@@ -245,5 +245,20 @@ export async function downloadAuthenticated(path: string, filename?: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
+export function exportDisbursementReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/receipt`) }
 export function exportPaymentReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`) }
 export function exportLoanStatementCsv(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, `loan-statement-${id}.csv`) }
+
+export async function uploadToCloudinary(signature: { cloudName: string; apiKey: string; timestamp: number; folder: string; type: string; signature: string }, file: File) {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('api_key', signature.apiKey)
+  fd.append('timestamp', String(signature.timestamp))
+  fd.append('folder', signature.folder)
+  fd.append('type', signature.type)
+  fd.append('signature', signature.signature)
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/auto/upload`, { method: 'POST', body: fd })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((json as any)?.error?.message || `Upload failed (${res.status})`)
+  return json as { public_id: string; secure_url?: string; bytes?: number; format?: string; resource_type?: string }
+}

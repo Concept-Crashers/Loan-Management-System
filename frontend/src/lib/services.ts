@@ -534,6 +534,11 @@ export const api = {
     apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify({ body, kind }) }),
   addApplicationAttachment: (id: string, input: { name: string; reference: string; kind?: string }) =>
     apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
+  getApplicationAttachmentSignature: (id: string, input: { mimeType: string; size: number }) =>
+    apiRequest<Record<string, unknown>>(`/api/v1/applications/${encodeURIComponent(id)}/attachments/upload-signature`, { method: 'POST', body: JSON.stringify(input) }),
+  saveApplicationAttachment: (id: string, input: { name: string; kind?: string; reference: string; storageKey?: string; mimeType?: string; size?: number }) =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/attachments/upload`, { method: 'POST', body: JSON.stringify(input) }),
+
   applyLoanPlan: (id: string, type: 'reschedule' | 'payment_plan', reason: string, count = 1, unit: 'day' | 'month' = 'day', startDate?: string) =>
     apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/apply-plan`, { method: 'POST', body: JSON.stringify({ type, reason, count, unit, ...(startDate ? { startDate } : {}) }) }),
 

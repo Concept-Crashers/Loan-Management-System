@@ -40,4 +40,19 @@ router.patch('/:id', requirePermission('collections.manage'), asyncRoute(async (
   await recordAudit({ user, action: 'collection.updated', entityType: 'collection_case', entityId: collection.id, branchId: collection.branchId, next: input })
   response.json({ success: true, message: 'Collection case updated successfully', data: collection })
 }))
+
+router.get('/summary/sla', requirePermission('collections.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const now = new Date()
+  const filter: any = { tenantId: user.tenantId }
+  if (user.branchIds?.length) filter.branchId = { $in: user.branchIds }
+  const [open, overdueFollowUp, overduePromise, breachedSla] = await Promise.all([
+    CollectionModel.countDocuments({ ...filter, status: { $ne: 'resolved' } }),
+    CollectionModel.countDocuments({ ...filter, status: { $ne: 'resolved' }, followUpAt: { $lte: now } }),
+    CollectionModel.countDocuments({ ...filter, status: 'promise_to_pay', promiseDueAt: { $lte: now } }),
+    CollectionModel.countDocuments({ ...filter, status: { $ne: 'resolved' }, slaDueAt: { $lte: now } }),
+  ])
+  response.json({ success: true, message: 'Collections SLA summary retrieved', data: { open, overdueFollowUp, overduePromise, breachedSla } })
+}))
+
 export default router
