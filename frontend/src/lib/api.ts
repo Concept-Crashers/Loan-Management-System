@@ -120,6 +120,16 @@ export function saveOrganisationSettings(settings: OrganisationSettings) {
   return apiRequest<OrganisationSettings>('/api/v1/organisation/settings', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
+export type PublicBranding = { name: string; tagline?: string; legalName?: string; logoUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string; receiptReferenceFormat?: string; updatedAt?: string | null }
+export async function getPublicBranding(): Promise<PublicBranding | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/organisation/branding`, { credentials: 'include' })
+    const body = await response.json().catch(() => null) as ApiEnvelope<PublicBranding> | null
+    if (!response.ok || !body?.success) return null
+    return body.data
+  } catch { return null }
+}
+
 export function listCashbook() {
   return apiRequest<Array<Record<string, unknown>>>('/api/v1/finance/cashbook')
 }

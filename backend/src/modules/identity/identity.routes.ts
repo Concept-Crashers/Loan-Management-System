@@ -85,7 +85,7 @@ router.post('/mfa/enrol', requireAuth, asyncRoute(async (request: AuthRequest, r
   identity.mfaSecret = encryptSecret(secret)
   identity.mfaEnabled = false
   await identity.save()
-  response.json({ success: true, message: 'MFA enrollment started.', data: { secret, issuer: 'LendFlow', account: identity.email } })
+  response.json({ success: true, message: 'MFA enrollment started.', data: { secret, issuer: 'Trust Loans', account: identity.email } })
 }))
 
 router.post('/mfa/enable', requireAuth, asyncRoute(async (request: AuthRequest, response) => {
@@ -115,7 +115,7 @@ router.post('/forgot-password', asyncRoute(async (request, response) => {
     identity.passwordResetTokenHash = tokenHash(rawToken)
     identity.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000)
     await identity.save()
-    await emailProvider.send({ to: identity.email, subject: 'Reset your LendFlow password', body: `Use this one-time reset token: ${rawToken}` })
+    await emailProvider.send({ to: identity.email, subject: 'Reset your Trust Loans password', body: `Use this one-time reset token: ${rawToken}` })
   }
   response.json({ success: true, message: 'If the account exists, password reset instructions have been sent.', data: null })
 }))
@@ -149,7 +149,7 @@ router.post('/verify-email/request', requireAuth, asyncRoute(async (request: Aut
   identity.emailVerificationTokenHash = tokenHash(rawToken)
   identity.emailVerificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
   await identity.save()
-  await emailProvider.send({ to: identity.email, subject: 'Verify your LendFlow email', body: `Use this one-time verification token: ${rawToken}` })
+  await emailProvider.send({ to: identity.email, subject: 'Verify your Trust Loans email', body: `Use this one-time verification token: ${rawToken}` })
   response.json({ success: true, message: 'Verification instructions sent.', data: null })
 }))
 
@@ -259,6 +259,6 @@ router.post('/users/:id/reset-password', requireAuth, requirePermission('identit
   identity.passwordResetExpiresAt = new Date(Date.now() + 60 * 60 * 1000)
   identity.refreshTokenHash = undefined
   await identity.save()
-  await emailProvider.send({ to: identity.email, subject: 'Reset your LendFlow password', body: `An administrator initiated a password reset for your LendFlow account. Use this one-time reset token: ${rawToken}` }).catch(() => {})
+  await emailProvider.send({ to: identity.email, subject: 'Reset your Trust Loans password', body: `An administrator initiated a password reset for your Trust Loans account. Use this one-time reset token: ${rawToken}` }).catch(() => {})
   response.json({ success: true, message: 'Password reset initiated. Share the reset instructions securely if email delivery is unavailable.', data: { resetToken: rawToken, email: identity.email } })
 }))

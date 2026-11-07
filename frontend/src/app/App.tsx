@@ -27,7 +27,7 @@ function PageForPath({ path }: { path: string }) {
   const definition = pageRegistry[path]
   return definition ? <OperationalPage definition={definition} path={path} /> : <NotFoundPage />
 }
-function NotFoundPage() { const location = useLocation(); return <div className="not-found-card"><span>404</span><h1>That page isn’t here</h1><p>No LendFlow route matches <code>{location.pathname}</code>.</p><Link className="lf-button lf-button-primary lf-button-md" to="/">Return to dashboard</Link></div> }
+function NotFoundPage() { const location = useLocation(); return <div className="not-found-card"><span>404</span><h1>That page isn’t here</h1><p>No Trust Loans route matches <code>{location.pathname}</code>.</p><Link className="lf-button lf-button-primary lf-button-md" to="/">Return to dashboard</Link></div> }
 
 export function App() {
   return <Routes>

@@ -1,6 +1,6 @@
 export const openApiDocument = {
   openapi: '3.0.3',
-  info: { title: 'LendFlow API', version: '0.1.0', description: 'Uganda loan management API. Financial amounts are integer minor units.' },
+  info: { title: 'Trust Loans API', version: '0.1.0', description: 'Uganda loan management API. Financial amounts are integer minor units.' },
   servers: [{ url: '/api/v1' }],
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },

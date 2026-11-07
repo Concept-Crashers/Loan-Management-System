@@ -60,10 +60,10 @@ app.use((request, response, next) => {
 })
 
 app.get('/', (_request, response) => {
-  response.json({ success: true, message: 'LendFlow API is running', data: { service: 'backend', docs: '/openapi.json', health: '/health' } })
+  response.json({ success: true, message: 'Trust Loans API is running', data: { service: 'backend', docs: '/openapi.json', health: '/health' } })
 })
 app.get('/health', asyncRoute(async (_request, response) => {
-  response.json({ success: true, message: 'LendFlow API is healthy', data: { status: 'ok', timestamp: new Date().toISOString() } })
+  response.json({ success: true, message: 'Trust Loans API is healthy', data: { status: 'ok', timestamp: new Date().toISOString() } })
 }))
 app.get('/health/ready', asyncRoute(async (_request, response) => {
   const data = databaseReadiness()

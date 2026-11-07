@@ -27,13 +27,13 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         const worker = registration.installing
         worker?.addEventListener('statechange', () => {
           if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            window.dispatchEvent(new CustomEvent('lendflow:pwa-update'))
+            window.dispatchEvent(new CustomEvent('trust-loans:pwa-update'))
           }
         })
       })
     })
   })
   navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'lendflow:sync') void flushOfflineOperations()
+    if (event.data?.type === 'trust-loans:sync' || event.data?.type === 'lendflow:sync') void flushOfflineOperations()
   })
 }

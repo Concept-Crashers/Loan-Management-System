@@ -6,7 +6,7 @@ import { processNotificationDeliveries } from './modules/notifications/notificat
 
 await connectDatabase()
 const server = app.listen(env.PORT, () => {
-  console.log(`LendFlow API listening on port ${env.PORT}`)
+  console.log(`Trust Loans API listening on port ${env.PORT}`)
 })
 const notificationWorker = setInterval(() => { void processNotificationDeliveries().catch((error) => console.error('Notification worker failed', error)) }, 10_000)
 

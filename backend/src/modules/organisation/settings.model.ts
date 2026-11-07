@@ -3,7 +3,7 @@ import { model, Schema } from 'mongoose'
 const settingsSchema = new Schema({
   tenantId: { type: String, required: true, unique: true, index: true },
   organisation: {
-    name: { type: String, required: true, default: 'LendFlow Organisation' },
+    name: { type: String, required: true, default: 'Trust Loans' },
     legalName: { type: String, default: '' },
     registrationNumber: { type: String, default: '' },
     address: { type: String, default: '' },
