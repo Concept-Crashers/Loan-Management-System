@@ -118,8 +118,8 @@ export function QuickContactsButton() {
           const waText = encodeURIComponent(reminderMessage(customer.name, balance, activeLoans))
           return <div key={id} className={`quick-contact-row ${selected ? 'is-selected' : ''}`} role="button" tabIndex={0} onClick={() => setSelectedId(id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(id) } }}>
             <div className="quick-contact-main">
-              <strong>{customer.name || customer.id}</strong>
-              <small>{customer.phone || 'No phone'} · {customer.id}</small>
+              <strong>{customer.name || 'Customer'}</strong>
+              <small>{customer.phone || 'No phone number'}</small>
               <span className={`quick-contact-balance ${balance > 0 ? 'has-balance' : ''}`}>Balance: {formatUGX(balance)}</span>
             </div>
             {selected ? <div className="quick-contact-actions" onClick={(e) => e.stopPropagation()}>
