@@ -1,5 +1,6 @@
 import { Children, Fragment, forwardRef, isValidElement, useCallback, useEffect, useId, useMemo, useRef, useState, useLayoutEffect, type ForwardedRef, type ReactElement, type ReactNode, type SelectHTMLAttributes } from 'react'
 import { Check, ChevronDown, Search } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { cn } from './utils'
 
 type NativeOptionProps = {
@@ -49,8 +50,10 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
   const [query, setQuery] = useState('')
   const [internalValue, setInternalValue] = useState(String(defaultValue ?? ''))
   const [activeIndex, setActiveIndex] = useState(0)
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number; width: number } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const nativeRef = useRef<HTMLSelectElement | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const listId = useId()
@@ -78,12 +81,40 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
     }
   })
 
+  useLayoutEffect(() => {
+    if (!open || typeof window === 'undefined') return
+    const positionPopover = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const maxWidth = Math.max(1, window.innerWidth - 16)
+      const width = Math.min(Math.max(rect.width, Math.min(180, maxWidth)), maxWidth)
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+      const height = Math.min(popoverRef.current?.getBoundingClientRect().height ?? 240, Math.max(120, window.innerHeight - 16))
+      const spaceBelow = window.innerHeight - rect.bottom - 8
+      const placeAbove = spaceBelow < height && rect.top > height + 8
+      const desiredTop = placeAbove ? rect.top - height - 4 : rect.bottom + 4
+      const top = Math.max(8, Math.min(desiredTop, window.innerHeight - height - 8))
+      setPopoverPosition({ top, left, width })
+    }
+    positionPopover()
+    const frame = window.requestAnimationFrame(positionPopover)
+    window.addEventListener('resize', positionPopover)
+    window.addEventListener('scroll', positionPopover, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', positionPopover)
+      window.removeEventListener('scroll', positionPopover, true)
+    }
+  }, [open, filtered.length])
+
   useEffect(() => {
     if (!open) return
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (!rootRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
         setOpen(false)
         setQuery('')
+        setPopoverPosition(null)
       }
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
@@ -100,6 +131,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
   function close() {
     setOpen(false)
     setQuery('')
+    setPopoverPosition(null)
   }
 
   function choose(option: SearchOption) {
@@ -128,6 +160,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
     if (event.key === 'Escape') {
       event.preventDefault()
       close()
+      triggerRef.current?.focus()
     } else if (event.key === 'ArrowDown' && filtered.length) {
       event.preventDefault()
       setActiveIndex((index) => Math.min(index + 1, filtered.length - 1))
@@ -142,7 +175,8 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
 
   const chosenLabel = selected?.label ?? options.find((option) => option.value === '')?.label ?? 'Select an option'
   return <div className="lf-search-select" ref={rootRef} onBlurCapture={(event) => {
-    if (!rootRef.current?.contains(event.relatedTarget as Node | null)) {
+    const target = event.relatedTarget as Node | null
+    if (!rootRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
       const native = nativeRef.current
       if (native && onBlur) onBlur({ target: native, currentTarget: native, type: 'blur' } as React.FocusEvent<HTMLSelectElement>)
     }
@@ -165,8 +199,8 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
       <span className={!selectedValue ? 'lf-search-select-placeholder' : ''}>{chosenLabel}</span>
       <ChevronDown size={14} aria-hidden="true" />
     </button>
-    {open && <div className="lf-search-select-panel">
-      <div className="lf-search-select-search-wrap"><Search size={14} aria-hidden="true" /><input ref={searchRef} type="text" role="searchbox" autoComplete="off" placeholder="Search options…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleSearchKeyDown} aria-label={ariaLabel ? `Search ${ariaLabel.toLowerCase()} options` : 'Search options'} aria-controls={listId} /></div>
+    {open && popoverPosition && typeof document !== 'undefined' && createPortal(<div ref={popoverRef} className="lf-search-select-panel" style={{ position: 'fixed', top: popoverPosition.top, left: popoverPosition.left, width: popoverPosition.width }}>
+      <div className="lf-search-select-search-wrap"><Search size={14} aria-hidden="true" /><input ref={searchRef} type="text" role="searchbox" autoComplete="off" autoFocus placeholder="Search options…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={handleSearchKeyDown} aria-label={ariaLabel ? `Search ${ariaLabel.toLowerCase()} options` : 'Search options'} aria-controls={listId} /></div>
       <div id={listId} className="lf-search-select-options" role="listbox" aria-label={ariaLabel ?? 'Options'}>
         {filtered.length ? filtered.map((option, index) => <button
           id={`${listId}-option-${index}`}
@@ -180,7 +214,7 @@ export const SearchableSelect = forwardRef<HTMLSelectElement, SelectHTMLAttribut
           onClick={() => choose(option)}
         ><span>{option.label || '—'}</span>{option.value === selectedValue && <Check size={14} aria-hidden="true" />}</button>) : <div className="lf-search-select-empty">No matching options</div>}
       </div>
-    </div>}
+    </div>, document.body)}
     <select
       {...nativeProps}
       ref={setNativeRef}

@@ -572,7 +572,7 @@ label.lf-button input[type="file"][hidden] { margin-top: 0; }
 .lf-search-select-trigger > svg { flex: 0 0 auto; color: #8a9bb0; }
 .lf-search-select-trigger:disabled { cursor: not-allowed; opacity: .62; }
 .lf-search-select-placeholder { color: #8794a5; }
-.lf-search-select-panel { position: absolute; z-index: 140; top: calc(100% + 5px); right: 0; left: 0; min-width: 180px; padding: 6px; border: 1px solid #e4eaf1; border-radius: 8px; background: #fff; box-shadow: 0 14px 32px rgb(24 43 68 / 15%); animation: menu-in .12s ease-out; }
+.lf-search-select-panel { position: fixed; z-index: 5000; min-width: 180px; padding: 6px; border: 1px solid #e4eaf1; border-radius: 8px; background: #fff; box-shadow: 0 14px 32px rgb(24 43 68 / 15%); animation: menu-in .12s ease-out; }
 .lf-search-select-search-wrap { display: flex; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid #e8edf3; border-radius: 5px; color: #8c9bae; background: #fbfcfe; }
 .lf-search-select-search-wrap input { width: 100%; min-width: 0; height: 31px; padding: 0; border: 0; outline: 0; color: #445b75; background: transparent; font-size: 10px; }
 .lf-search-select-search-wrap input::placeholder { color: #a6b1bf; }
