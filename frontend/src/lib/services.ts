@@ -122,7 +122,10 @@ export const api = {
     const path = bId ? `/api/v1/customers?branchId=${encodeURIComponent(bId)}` : '/api/v1/customers'
     const response = await apiRequest<BackendCustomer[] | { data: BackendCustomer[] }>(path)
     const records = Array.isArray(response) ? response : (response.data ?? [])
-    return records.map(mapCustomer)
+    return records.map((record) => {
+      const mapped = mapCustomer(record)
+      return { ...mapped, recordId: mapped.recordId || String((record as any)._id ?? (record as any).id ?? mapped.id) }
+    })
   },
 
   listProducts: async (): Promise<LoanProduct[]> => {

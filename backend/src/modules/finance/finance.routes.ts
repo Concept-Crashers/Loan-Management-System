@@ -54,8 +54,9 @@ router.get('/loans', requirePermission('loans.accounts.view'), asyncRoute(async 
   const result = await paged(LoanAccountModel, filter, page)
   const data = await LoanAccountModel.find(filter).populate('customerId', 'name customerNumber').sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
   response.json({ success: true, message: 'Loan accounts retrieved successfully', data: data.map((loan) => {
-    const customer = loan.customerId as unknown as { name?: string; customerNumber?: string }
-    return { ...loan, ref: String(loan._id), applicationId: String(loan.applicationId), customerId: String((loan.customerId as unknown as { _id?: string })._id ?? loan.customerId), customer: customer.name ?? customer.customerNumber ?? '' }
+    const customer = loan.customerId as unknown as { name?: string; customerNumber?: string; _id?: string }
+    const outstandingMinor = Number(loan.outstandingPrincipalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0)
+    return { ...loan, ref: String(loan._id), applicationId: String(loan.applicationId), customerId: String(customer?._id ?? loan.customerId), customer: customer.name ?? customer.customerNumber ?? '', outstandingMinor, outstandingPrincipalMinor: Number(loan.outstandingPrincipalMinor ?? 0), outstandingInterestMinor: Number(loan.outstandingInterestMinor ?? 0), outstandingFeesMinor: Number(loan.outstandingFeesMinor ?? 0) }
   }) , meta: result.meta })
 }))
 router.get('/payments', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
