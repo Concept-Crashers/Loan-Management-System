@@ -99,3 +99,19 @@ router.post('/:id/decision', requirePermission('loans.applications.approve'), as
   response.json({ success: true, message: `Application ${parsed.decision} successfully`, data: application })
 }))
 export default router
+
+router.post('/:id/cancel', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ reason: z.string().min(3), version: z.number().int().positive() }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_CANCEL_STATE', 'This application cannot be cancelled in its current state.')
+  if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
+  application.status = 'cancelled'
+  application.version += 1
+  application.decisionHistory.push({ actorId: user.id, decision: 'cancelled', reason: parsed.reason, at: new Date() })
+  await application.save()
+  await recordAudit({ user, action: 'application.cancelled', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { status: application.status, reason: parsed.reason } })
+  response.json({ success: true, message: 'Application cancelled successfully', data: application })
+}))

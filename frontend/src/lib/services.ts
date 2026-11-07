@@ -174,6 +174,7 @@ export const api = {
     return records.map((record) => {
       const customerObj = typeof record.customerId === 'object' && record.customerId !== null ? (record.customerId as { name?: string; _id?: string; customerNumber?: string }) : null
       return {
+        id: String(record._id ?? record.ref ?? ''),
         ref: String(record.ref ?? record._id ?? ''),
         applicationId: String(record.applicationId ?? ''),
         branchId: String(record.branchId ?? ''),
@@ -479,6 +480,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ branchId: input.branchId ?? branchId(), loanAccountId: input.loanAccountId, amountMinor: toMinor(input.amount), method: input.method, reference: input.reference }),
     }),
+
+  cancelApplication: (id: string, reason: string, version: number) =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ reason, version }) }),
+
+  reverseRepayment: (id: string, reason: string) =>
+    apiRequest(`/api/v1/finance/payments/${encodeURIComponent(id)}/reverse`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  loanLifecycle: (id: string, type: 'restructure' | 'refinance' | 'write_off' | 'settle' | 'penalty', reason: string) =>
+    apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/lifecycle`, { method: 'POST', body: JSON.stringify({ type, reason }) }),
+
+  authorizeDisbursement: (input: { loanId: string; applicationId: string; amount: number; method: string; reference?: string; idempotencyKey: string }) =>
+    apiRequest(`/api/v1/finance/disbursements/authorize`, { method: 'POST', body: JSON.stringify({ ...input, amountMinor: toMinor(input.amount) }) }),
+
+  executeDisbursement: (id: string) =>
+    apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/execute`, { method: 'POST' }),
+
+  resetStaffPassword: (id: string) =>
+    apiRequest<{ resetToken?: string; email?: string }>(`/api/v1/auth/users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
+
 }
 
 export const apiContractNote = 'All financial records are persisted and validated by the authenticated backend.'

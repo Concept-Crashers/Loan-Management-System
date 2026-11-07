@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, CalendarDays, ChevronLeft, ChevronRight, Download, Ellipsis, Eye, EyeOff, List, Search, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -12,7 +12,7 @@ import type { RootState } from '../store/store'
 import { Dialog, DialogContent } from './ui/dialog'
 import { PhoneNumberInput } from './ui/PhoneNumberInput'
 import { api } from '../lib/services'
-import { getRecordDetail } from '../lib/api'
+import { getRecordDetail, getLatestCreditAssessment, calculateCreditScore, type CreditAssessment } from '../lib/api'
 
 function displayValue(row: TableRow, column: PageColumn) {
   const value = row[column.key]
@@ -95,6 +95,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
   const [decisionNotes, setDecisionNotes] = useState('')
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const [decisionCredit, setDecisionCredit] = useState<CreditAssessment | null>(null)
+  const [decisionCreditLoading, setDecisionCreditLoading] = useState(false)
+  const [actionDialog, setActionDialog] = useState<{ title: string; description: string; reasonLabel: string; confirmLabel: string; danger?: boolean; defaultReason?: string; extra?: ReactNode; run: (reason: string) => Promise<void> } | null>(null)
+  const [actionReason, setActionReason] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
   const [branchModal, setBranchModal] = useState(false)
   const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '', managerId: '' })
   const [branchSaving, setBranchSaving] = useState(false)
@@ -119,6 +124,9 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
   const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin','admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
   const canReview = isSuperAdmin || ['Super Admin', 'Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
+  const canManageLoans = isSuperAdmin || permissions.includes('loans.accounts.manage')
+  const canReverseRepayments = isSuperAdmin || permissions.includes('repayments.reverse')
+  const canManageUsers = isSuperAdmin || permissions.includes('identity.users.update')
   const navigate = useNavigate()
 
   const loadData = async () => {
@@ -140,11 +148,11 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(visible.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, product: item.product, amount: item.amount, income: item.income, officer: item.officer, submitted: item.submitted, status: item.status, version: item.version })))
       } else if (path === '/loans') {
         const rows = await api.listLoans()
-        setRemoteRows(rows.map((item) => ({ ref: item.ref, customer: item.customer, customerId: item.customerId, product: item.product, principal: item.principal, outstanding: item.outstanding, nextDue: item.nextDue, status: item.status })))
+        setRemoteRows(rows.map((item) => ({ id: (item as any).id ?? item.ref, ref: item.ref, customer: item.customer, customerId: item.customerId, product: item.product, principal: item.principal, outstanding: item.outstanding, nextDue: item.nextDue, status: item.status })))
       } else if (path === '/disbursements') {
         const rows = await api.listLoans()
         const pending = rows.filter((item) => item.status === 'Pending Disbursement')
-        setRemoteRows(pending.map((item) => ({ ref: item.ref, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement' })))
+        setRemoteRows(pending.map((item) => ({ id: (item as any).id ?? item.ref, ref: item.ref, applicationId: item.applicationId, branchId: item.branchId, customer: item.customer, product: item.product, amount: item.principal, branch: item.branchId || 'Primary Branch', submitted: item.start, state: 'Pending Disbursement' })))
       } else if (path === '/repayments') {
         const rows = await api.listRepayments()
         setRemoteRows(rows.map((item) => ({ id: item.id, recordId: (item as any).recordId ?? item.id, customer: item.customer, customerId: item.customerId, loan: item.loan, amount: item.amount, method: item.method, date: item.date, receivedBy: item.receivedBy, status: item.status })))
@@ -227,40 +235,44 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }
 
   async function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
-    if (!canReview) {
-      toast.error('You do not have permission to decide applications.', { description: 'Only an authorized approver can record an underwriting decision.' })
-      return
-    }
+    if (!canReview) { toast.error('Loan approval is not permitted for this account.'); return }
+    setDecisionCredit(null)
+    const detail = await getRecordDetail('applications', String(row.id)).catch((error) => { toast.error(error instanceof Error ? error.message : 'Application details could not be loaded before decision.'); return null })
+    if (!detail) return
+    const status = String(detail.status ?? row.status ?? '').toLowerCase()
+    if (status === 'approved' || status === 'rejected' || status === 'cancelled') { toast.error(`This application is already ${status}.`); return }
     setDecisionNotes('')
-    try {
-      const fresh = await getRecordDetail('applications', String(row.id)) as any
-      const merged = { ...row, version: Number(fresh?.version ?? row.version ?? 1), status: String(fresh?.status ?? row.status ?? '') }
-      setDecisionRequest({ row: merged, decision })
-    } catch {
-      setDecisionRequest({ row, decision })
-      toast.info('Could not refresh application version; using the current row.')
-    }
+    setDecisionRequest({ row: { ...row, status, version: Number(detail.version ?? row.version ?? 1) }, decision })
+    setDecisionCreditLoading(true)
+    getLatestCreditAssessment({ applicationId: String(row.id) }).then((c) => setDecisionCredit(c)).catch(() => setDecisionCredit(null)).finally(() => setDecisionCreditLoading(false))
   }
 
   async function confirmDecision() {
     if (!decisionRequest || decisionSubmitting) return
     const { row, decision } = decisionRequest
+    const version = Number(row.version ?? 1)
+    const reason = decisionNotes.trim() || (decision === 'approve' ? 'Approved after review.' : 'Rejected after review.')
     setDecisionSubmitting(true)
     try {
-      await api.decideApplication(
-        String(row.id),
-        decision === 'approve' ? 'approved' : 'rejected',
-        decisionNotes.trim() || `Decision: ${decision}`,
-        Number(row.version ?? 1)
-      )
-      toast.success(`Application ${decision === 'approve' ? 'approved' : 'rejected'} successfully`)
-      setDecisionRequest(null)
+      const result = await api.decideApplication(String(row.id), decision === 'approve' ? 'approved' : 'rejected', reason, version)
+      toast.success((result as any)?.message || (decision === 'approve' ? 'Application approved successfully.' : 'Application rejected.'))
+      setDecisionRequest(null); setDecisionNotes(''); setDecisionCredit(null)
       await loadData()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Decision could not be recorded.')
-    } finally {
-      setDecisionSubmitting(false)
-    }
+      toast.error(error instanceof Error ? error.message : 'Decision could not be submitted.')
+      await loadData()
+    } finally { setDecisionSubmitting(false) }
+  }
+
+  function openReasonAction(config: NonNullable<typeof actionDialog>) { setActionReason(config.defaultReason ?? ''); setActionDialog(config) }
+  async function runActionDialog() {
+    if (!actionDialog || actionBusy) return
+    const reason = actionReason.trim()
+    if (reason.length < 3) { toast.error('Please provide a reason (at least 3 characters).'); return }
+    setActionBusy(true)
+    try { await actionDialog.run(reason); setActionDialog(null); setActionReason(''); await loadData() }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Action could not be completed.') }
+    finally { setActionBusy(false) }
   }
 
   async function saveFollowup() {
@@ -423,6 +435,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                 <>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditStaff(row); setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' }) }}>Edit staff</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateStaffUser(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Staff deactivated' : 'Staff activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
+                                  {canManageUsers && <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const out = await api.resetStaffPassword(String(row.id)); toast.success(out?.resetToken ? `Password reset created. Token: ${String(out.resetToken).slice(0, 10)}…` : 'Password reset initiated') } catch (e) { toast.error(e instanceof Error ? e.message : 'Password reset could not be initiated.') } }}>Reset password</DropdownMenu.Item>}
                                 </>
                               )}
                               {path === '/branches' && (
@@ -431,14 +444,42 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                                 </>
                               )}
-                              {path === '/repayments' && String(row.status ?? '') === 'Pending review' && (
-                                <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</DropdownMenu.Item>
+                              {path === '/applications' && (
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/applications/${encodeURIComponent(String(row.id))}`)}>Open application</DropdownMenu.Item>
+                                  {!['approved','rejected','cancelled'].includes(String(row.status ?? '').toLowerCase()) && (
+                                    <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Cancel application', description: `${String(row.customer ?? 'Applicant')} · ${String(row.id)}`, reasonLabel: 'Cancellation reason', confirmLabel: 'Cancel application', danger: true, run: async (reason) => { const fresh: any = await getRecordDetail('applications', String(row.id)).catch(() => null); await api.cancelApplication(String(row.id), reason, Number(fresh?.version ?? row.version ?? 1)); toast.success('Application cancelled') } })}>Cancel application</DropdownMenu.Item>
+                                  )}
+                                </>
+                              )}
+                              {path === '/repayments' && (
+                                <>
+                                  {String(row.status ?? '') === 'Pending review' && (
+                                    <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed.') } }}>Confirm payment</DropdownMenu.Item>
+                                  )}
+                                  {String(row.status ?? '') === 'Successful' && canReverseRepayments && (
+                                    <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Reverse repayment', description: `${String(row.customer ?? 'Customer')} · ${formatUGX(Number(row.amount ?? 0))}`, reasonLabel: 'Reversal reason', confirmLabel: 'Reverse repayment', danger: true, run: async (reason) => { await api.reverseRepayment(String(row.recordId ?? row.id), reason); toast.success('Repayment reversed') } })}>Reverse payment</DropdownMenu.Item>
+                                  )}
+                                </>
                               )}
                               {path === '/approvals' && canReview && (
                                 <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => { setDecisionCreditLoading(true); try { const c = await calculateCreditScore({ applicationId: String(row.id) }); setDecisionCredit(c); toast.success(`Credit score ${c.score ?? '—'} (${c.grade ?? c.riskLevel ?? 'calculated'})`) } catch (e) { toast.error(e instanceof Error ? e.message : 'Credit score could not be calculated.') } finally { setDecisionCreditLoading(false) } }}>Calculate credit score</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={() => void requestDecision(row, 'approve')}>✓ Approve</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => void requestDecision(row, 'reject')}>× Reject</DropdownMenu.Item>
                                 </>
+                              )}
+                              {path === '/loans' && canManageLoans && (
+                                <>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Restructure loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Restructure reason', confirmLabel: 'Restructure', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'restructure', reason); toast.success('Loan restructured') } })}>Restructure</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Refinance loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Refinance reason', confirmLabel: 'Refinance', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'refinance', reason); toast.success('Loan refinanced') } })}>Refinance</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Apply penalty', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Penalty reason', confirmLabel: 'Apply penalty', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'penalty', reason); toast.success('Penalty applied') } })}>Apply penalty</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => openReasonAction({ title: 'Settle loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Settlement reason', confirmLabel: 'Settle loan', run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'settle', reason); toast.success('Loan settled') } })}>Settle loan</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item dropdown-danger" onSelect={() => openReasonAction({ title: 'Write off loan', description: `${String(row.ref ?? row.id)} · ${String(row.customer ?? '')}`, reasonLabel: 'Write-off reason', confirmLabel: 'Write off loan', danger: true, run: async (reason) => { await api.loanLifecycle(String(row.id ?? row.ref), 'write_off', reason); toast.success('Loan written off') } })}>Write off</DropdownMenu.Item>
+                                </>
+                              )}
+                              {path === '/disbursements' && String(row.state ?? row.status ?? '').toLowerCase().includes('pending') && (
+                                <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/disbursements/new?loan=${encodeURIComponent(String(row.ref ?? row.id ?? ''))}`)}>Disburse loan</DropdownMenu.Item>
                               )}
                               {path === '/collections' && (
                                 <DropdownMenu.Item className="dropdown-item" onSelect={() => { setFollowupNote(String(row.note ?? '')); setSelected(row) }}>Log follow-up</DropdownMenu.Item>
@@ -530,19 +571,35 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!decisionRequest} onOpenChange={(open) => !open && setDecisionRequest(null)}>
+      <Dialog open={!!decisionRequest} onOpenChange={(open) => { if (!open) { setDecisionRequest(null); setDecisionCredit(null) } }}>
         <DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application`} description="Submit an underwriting decision to the server." className="record-dialog">
           <div className="followup-note">
             <span>Application</span>
             <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')} · status: {String(decisionRequest?.row.status ?? '—')} · v{String(decisionRequest?.row.version ?? 1)}</p>
+            <span>Credit score</span>
+            <p>{decisionCreditLoading ? 'Loading credit score…' : decisionCredit ? `Score ${decisionCredit.score ?? '—'} · ${String(decisionCredit.grade ?? '—')} · ${String(decisionCredit.riskLevel ?? '—').replaceAll('_', ' ')} · ${String(decisionCredit.recommendation ?? '—').replaceAll('_', ' ')}` : 'No saved credit score. Use “Calculate credit score” from the approvals row menu, then reopen this decision if needed.'}</p>
             <span>Decision notes</span>
             <Textarea rows={4} value={decisionNotes} placeholder="Reason or underwriting conditions..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} />
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" disabled={decisionSubmitting} onClick={() => setDecisionRequest(null)}>Cancel</Button>
+            <Button variant="outline" disabled={decisionSubmitting} onClick={() => { setDecisionRequest(null); setDecisionCredit(null) }}>Cancel</Button>
             <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!actionDialog} onOpenChange={(open) => !open && setActionDialog(null)}>
+        <DialogContent title={actionDialog?.title ?? 'Action'} description={actionDialog?.description ?? ''} className="record-dialog">
+          <div className="followup-note">
+            {actionDialog?.extra}
+            <span>{actionDialog?.reasonLabel ?? 'Reason'}</span>
+            <Textarea rows={4} value={actionReason} placeholder="Provide a clear reason for audit and operations..." onChange={(event) => setActionReason(event.target.value)} maxLength={500} />
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={actionBusy} onClick={() => setActionDialog(null)}>Cancel</Button>
+            <Button variant={actionDialog?.danger ? 'danger' : 'primary'} loading={actionBusy} onClick={() => void runActionDialog()}>{actionDialog?.confirmLabel ?? 'Confirm'}</Button>
           </div>
         </DialogContent>
       </Dialog>

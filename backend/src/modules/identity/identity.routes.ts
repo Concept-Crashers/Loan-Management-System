@@ -249,3 +249,16 @@ router.post('/refresh', asyncRoute(async (request, response) => {
 }))
 
 export default router
+
+router.post('/users/:id/reset-password', requireAuth, requirePermission('identity.users.update'), asyncRoute(async (request: AuthRequest, response) => {
+  const admin = currentUser(request)
+  const identity = await IdentityModel.findOne({ _id: request.params.id, tenantId: admin.tenantId })
+  if (!identity) throw new HttpError(404, 'IDENTITY_NOT_FOUND', 'Staff user was not found.')
+  const rawToken = token()
+  identity.passwordResetTokenHash = tokenHash(rawToken)
+  identity.passwordResetExpiresAt = new Date(Date.now() + 60 * 60 * 1000)
+  identity.refreshTokenHash = undefined
+  await identity.save()
+  await emailProvider.send({ to: identity.email, subject: 'Reset your LendFlow password', body: `An administrator initiated a password reset for your LendFlow account. Use this one-time reset token: ${rawToken}` }).catch(() => {})
+  response.json({ success: true, message: 'Password reset initiated. Share the reset instructions securely if email delivery is unavailable.', data: { resetToken: rawToken, email: identity.email } })
+}))

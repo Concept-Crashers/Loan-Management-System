@@ -666,3 +666,8 @@ label.lf-button input[type="file"][hidden] { margin-top: 0; }
   .record-view-dialog .record-field, .record-view-dialog .dialog-close { transition: none; }
   .record-view-dialog .record-field:hover { transform: none; }
 }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.35); display: grid; place-items: center; z-index: 6000; padding: 16px; }
+.modal-card { width: 100%; background: #fff; border: 1px solid #d7e0ea; border-radius: 14px; padding: 18px; box-shadow: 0 20px 60px rgba(15,23,42,.18); }
+.modal-card h3 { margin: 0 0 4px; font-size: 18px; }
+.modal-card p { margin: 0 0 12px; color: #64748b; }

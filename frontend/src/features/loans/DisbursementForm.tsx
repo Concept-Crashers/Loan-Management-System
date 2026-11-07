@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, useWatch } from 'react-hook-form'
 import { ArrowLeft, Banknote, CalendarDays, Check, Info, ShieldCheck, Wallet } from 'lucide-react'
 import Swal from 'sweetalert2'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { LoanAccount } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
@@ -23,20 +23,26 @@ type DisbursementInput = z.input<typeof schema>
 type DisbursementValues = z.output<typeof schema>
 export function DisbursementForm() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [isSaving, setIsSaving] = useState(false)
   const [loans, setLoans] = useState<LoanAccount[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const pendingLoans = loans.filter((loan) => loan.status === 'Pending Disbursement')
-  useEffect(() => {
-    api.listLoans().then(setLoans).catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Approved loans could not be loaded.'))
-  }, [])
-  const { register, control, handleSubmit, setError, formState: { errors } } = useForm<DisbursementInput, unknown, DisbursementValues>({
+  const { register, control, handleSubmit, setError, setValue, formState: { errors } } = useForm<DisbursementInput, unknown, DisbursementValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       loanRef: '', amount: 0,
       date: new Date().toISOString().slice(0, 10), method: 'Bank transfer', reference: '', notes: '',
     },
   })
+  useEffect(() => {
+    api.listLoans().then((rows) => {
+      setLoans(rows)
+      const pre = searchParams.get('loan')
+      const match = rows.find((l) => (l.ref === pre || (l as any).id === pre) && l.status === 'Pending Disbursement')
+      if (match) setValue('loanRef', match.ref)
+    }).catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Approved loans could not be loaded.'))
+  }, [searchParams, setValue])
   const loanRef = String(useWatch({ control, name: 'loanRef' }) ?? '')
   const selectedLoan = pendingLoans.find((item) => item.ref === loanRef)
 
