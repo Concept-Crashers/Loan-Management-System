@@ -326,7 +326,11 @@ a { color: inherit; text-decoration: none; }
 /* Registration, loan, repayment and disbursement forms */
 .form-page { max-width: 100%; }
 .registration-form, .disbursement-form { display: flex; flex-direction: column; gap: 12px; }
-.form-section { overflow: hidden; }
+.form-section { overflow: visible; position: relative; }
+.form-section:has(.lf-searchable-popover) { z-index: 40; }
+.dialog-content:has(.lf-searchable-popover) { z-index: 120; }
+.wizard-card, .wizard-panel, .form-page, .form-section-body, .record-dialog { overflow: visible; }
+.lf-searchable-popover { position: fixed; z-index: 5000; border: 1px solid #e3e8ef; border-radius: 7px; background: #fff; box-shadow: 0 10px 30px rgb(22 40 64 / 12%); overflow: hidden; }
 .form-section-heading { display: flex; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid #eef1f5; }
 .section-number { width: 23px; height: 23px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 6px; color: #4774b5; background: #edf4fc; font-size: 10.75px; font-weight: 650; }
 .form-section-heading h2 { margin: 0; color: #435873; font-size: 11.5px; font-weight: 650; }.form-section-heading p { margin: 3px 0 0; color: #9aa6b4; font-size: 10.75px; }
@@ -542,7 +546,6 @@ a { color: inherit; text-decoration: none; }
 .lf-searchable-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; cursor: pointer; background: #fff; }
 .lf-searchable-trigger.is-open { border-color: #8bb0e3; box-shadow: 0 0 0 2px rgb(49 115 202 / 10%); }
 .lf-searchable-placeholder { color: #a6b1bf; }
-.lf-searchable-popover { position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid #e3e8ef; border-radius: 7px; background: #fff; box-shadow: 0 10px 30px rgb(22 40 64 / 12%); overflow: hidden; }
 .lf-searchable-search { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-bottom: 1px solid #edf1f5; color: #8fa0b5; }
 .lf-searchable-search input { flex: 1; border: 0; outline: none; background: transparent; font: inherit; font-size: 11.5px; color: #3f5570; }
 .lf-searchable-options { max-height: 220px; overflow-y: auto; padding: 4px; }

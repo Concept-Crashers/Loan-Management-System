@@ -45,12 +45,14 @@ type BackendProduct = {
 
 export interface BranchRecord {
   id: string
+  code?: string
   name: string
   district: string
+  managerId?: string
   manager: string
   staff: string
   activeLoans: string
-  status: string
+  status: 'Active' | 'Suspended'
 }
 
 const branchId = () => {
@@ -322,9 +324,11 @@ export const api = {
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => ({
       id: String(record._id ?? record.id ?? record.code ?? ''),
+      code: String(record.code ?? ''),
       name: String(record.name ?? ''),
       district: String(record.district ?? ''),
-      manager: String(record.managerId ?? '—'),
+      managerId: String(record.managerId ?? ''),
+      manager: String(record.managerName ?? record.managerId ?? '—'),
       staff: String(record.staffCount ?? '0'),
       activeLoans: String(record.activeLoans ?? '0'),
       status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
