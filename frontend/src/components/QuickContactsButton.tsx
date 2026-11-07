@@ -3,11 +3,14 @@ import { createPortal } from 'react-dom'
 import { MessageCircle, Phone, Search, Users, X } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import { api } from '../lib/services'
-import { formatUGX } from '../lib/format'
 import type { Customer, LoanAccount } from '../lib/types'
 import type { RootState } from '../store/store'
 
 const WHATSAPP_DISPLAY = '+256 746314927'
+
+function formatAmount(value: number) {
+  return `UGX ${new Intl.NumberFormat('en-UG', { maximumFractionDigits: 0 }).format(Math.max(0, Number(value) || 0))}`
+}
 
 function sanitizePhone(raw: string) {
   const digits = String(raw || '').replace(/[^\d+]/g, '')
@@ -29,7 +32,7 @@ function reminderMessage(name: string, balance: number, loans: LoanAccount[], se
     salutation,
     '',
     `This is a formal payment reminder from Trust Loans regarding your loan account${ref ? ` (${ref})` : ''}.`,
-    `Current outstanding balance: UGX ${formatUGX(balance).replace(/^UGX\s*/i, '')}.`,
+    `Current outstanding balance: ${formatAmount(balance)}.`,
     due ? `Next scheduled payment date: ${due}.` : 'Kindly arrange your next payment at your earliest convenience.',
     '',
     'If you have already made this payment, please disregard this message. Should you need clarification or wish to discuss a payment arrangement, you may reply to this WhatsApp message or contact our office for assistance.',
@@ -126,7 +129,7 @@ export function QuickContactsButton() {
             <div className="quick-contact-main">
               <strong>{customer.name || 'Customer'}</strong>
               <small>{customer.phone || 'No phone number'}</small>
-              <span className={`quick-contact-balance ${balance > 0 ? 'has-balance' : ''}`}>Outstanding balance: {formatUGX(balance)}</span>
+              <span className={`quick-contact-balance ${balance > 0 ? 'has-balance' : ''}`}>Outstanding balance: {formatAmount(balance)}</span>
               {activeLoans.length > 0 && <small>{activeLoans.length} loan account{activeLoans.length === 1 ? '' : 's'}</small>}
             </div>
             {selected ? <div className="quick-contact-actions" onClick={(e) => e.stopPropagation()}>
