@@ -8,7 +8,7 @@ const applicationSchema = new Schema({
   status: { type: String, enum: ['draft', 'submitted', 'under_review', 'assessment_required', 'info_requested', 'approval_pending', 'approved', 'rejected', 'cancelled', 'withdrawn'], default: 'draft', index: true },
   officerId: { type: String, required: true }, version: { type: Number, default: 1 }, decisionHistory: { type: [Schema.Types.Mixed], default: [] },
   reviewComments: { type: [{ actorId: String, actorName: String, body: String, kind: String, at: Date }], default: [] },
-  attachments: { type: [{ name: String, kind: String, reference: String, addedBy: String, addedAt: Date }], default: [] },
+  attachments: { type: [{ name: String, kind: String, reference: String, storageKey: String, mimeType: String, size: Number, status: { type: String, enum: ['pending_scan', 'available', 'rejected'], default: 'available' }, expiresAt: Date, legalHold: { type: Boolean, default: false }, deletedAt: Date, addedBy: String, addedAt: Date }], default: [] },
   loanAccountId: { type: Schema.Types.ObjectId, ref: 'LoanAccount' },
 }, { timestamps: true })
 applicationSchema.index({ tenantId: 1, branchId: 1, status: 1 })

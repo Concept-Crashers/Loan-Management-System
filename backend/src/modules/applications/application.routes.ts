@@ -194,4 +194,16 @@ router.post('/:id/attachments/upload', requirePermission('loans.applications.cre
   response.json({ success: true, message: 'Application attachment recorded', data: application })
 }))
 
+router.get('/:id/attachments/:index/download', requirePermission('loans.applications.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).lean()
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  const idx = Number(request.params.index)
+  const attachment: any = Array.isArray((application as any).attachments) ? (application as any).attachments[idx] : null
+  if (!attachment || attachment.deletedAt || (attachment.expiresAt && new Date(attachment.expiresAt) <= new Date())) throw new HttpError(404, 'ATTACHMENT_NOT_AVAILABLE', 'Attachment is not available.')
+  await recordAudit({ user, action: 'application.attachment_accessed', entityType: 'loan_application', entityId: String(application._id), branchId: (application as any).branchId, next: { index: idx, reference: attachment.reference } })
+  response.json({ success: true, message: 'Attachment reference retrieved', data: { url: attachment.reference, storageKey: attachment.storageKey, status: attachment.status ?? 'available' } })
+}))
+
 export default router
