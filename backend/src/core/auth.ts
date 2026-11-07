@@ -24,11 +24,18 @@ function isPrivileged(roles: string[] = []) {
 }
 
 async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
-  if (isPrivileged(roles)) return ['*', ...ALL_PERMISSIONS]
   const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
+  if (normalized.some((r) => ['super_admin', 'superadmin'].includes(r))) return ['*', ...ALL_PERMISSIONS]
   if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
   const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
-  return [...new Set([...(explicit ?? []), ...mapped.flatMap((m) => (m.permissions ?? []).filter(Boolean))].filter(Boolean))]
+  const mappedByRole = new Map(mapped.map((m) => [m.normalizedRole, (m.permissions ?? []).filter(Boolean)]))
+  const rolePerms = normalized.flatMap((role) => {
+    const perms = mappedByRole.get(role)
+    if (perms) return perms
+    if (role === 'admin') return [...ALL_PERMISSIONS] // legacy default: admin keeps full access until super admin configures it
+    return []
+  })
+  return [...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))]
 }
 
 export async function requireAuth(request: AuthRequest, _response: Response, next: NextFunction) {

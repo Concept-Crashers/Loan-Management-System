@@ -55,11 +55,17 @@ function validTotp(secret: string, input: string) {
 
 async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
   const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
-  const privileged = normalized.some((r) => ['super_admin', 'superadmin'].includes(r))
-  if (privileged) return ['*', ...ALL_PERMISSIONS]
+  if (normalized.some((r) => ['super_admin', 'superadmin'].includes(r))) return ['*', ...ALL_PERMISSIONS]
   if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
-  const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions').lean()
-  return [...new Set([...(explicit ?? []), ...mapped.flatMap((m) => (m.permissions ?? []).filter(Boolean))].filter(Boolean))]
+  const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
+  const mappedByRole = new Map(mapped.map((m) => [m.normalizedRole, (m.permissions ?? []).filter(Boolean)]))
+  const rolePerms = normalized.flatMap((role) => {
+    const perms = mappedByRole.get(role)
+    if (perms) return perms
+    if (role === 'admin') return [...ALL_PERMISSIONS]
+    return []
+  })
+  return [...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))]
 }
 
 function publicUser(identity: { id: string; name?: string; email?: string; phone?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[]; mfaEnabled?: boolean }): AuthUser & { mfaEnabled?: boolean; phone?: string } {
@@ -282,8 +288,10 @@ router.get('/roles/catalog', requireAuth, requirePermission('identity.roles.view
   const mapByRole = new Map(mappings.map((m) => [m.normalizedRole, m]))
   const roles = [...new Set([...DEFAULT_ROLES, ...mappings.map((m) => m.normalizedRole)])].map((normalized) => {
     const mapped = mapByRole.get(normalized)
-    const permissions = normalized === 'super_admin' || normalized === 'superadmin' ? ['*', ...ALL_PERMISSIONS] : (mapped?.permissions ?? [])
-    return { role: mapped?.role || displayRoleName(normalized), normalizedRole: normalized, permissions: [...new Set(permissions)], description: mapped?.description ?? '', updatedAt: mapped?.updatedAt ?? null, locked: ['super_admin', 'superadmin'].includes(normalized) }
+    const permissions = normalized === 'super_admin' || normalized === 'superadmin'
+      ? ['*', ...ALL_PERMISSIONS]
+      : (mapped?.permissions ?? (normalized === 'admin' ? [...ALL_PERMISSIONS] : []))
+    return { role: mapped?.role || displayRoleName(normalized), normalizedRole: normalized, permissions: [...new Set(permissions)], description: mapped?.description ?? '', updatedAt: mapped?.updatedAt ?? null, locked: ['super_admin', 'superadmin'].includes(normalized), defaulted: !mapped && normalized === 'admin' }
   })
   response.json({ success: true, message: 'Role permissions retrieved successfully', data: { roles, permissions: ALL_PERMISSIONS, groups: PERMISSION_GROUPS } })
 }))

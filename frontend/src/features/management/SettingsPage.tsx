@@ -121,7 +121,7 @@ export function SettingsPage() {
   function setRolePerms(role: string, perms: string[]) { setRoleDraft((cur) => ({ ...cur, [role]: [...new Set(perms)] })) }
   function togglePerm(role: string, perm: string) { const set = new Set(roleDraft[role] ?? []); if (set.has(perm)) set.delete(perm); else set.add(perm); setRolePerms(role, [...set]) }
   function toggleGroup(role: string, perms: string[]) { const set = new Set(roleDraft[role] ?? []); const all = perms.every((p) => set.has(p)); perms.forEach((p) => all ? set.delete(p) : set.add(p)); setRolePerms(role, [...set]) }
-  function roleSummary(role: RolePermissionEntry) { return role.locked ? 'Full access (locked)' : `${(roleDraft[role.normalizedRole] ?? []).length} / ${allCatalogPermissions.length} permissions` }
+  function roleSummary(role: RolePermissionEntry) { return role.locked ? 'Full access (overall, locked)' : `${(roleDraft[role.normalizedRole] ?? []).length} / ${allCatalogPermissions.length} permissions${role.defaulted ? ' · defaulted (save to persist)' : ''}` }
 
   async function saveSelectedRole() {
     if (!selected || selected.locked) return
