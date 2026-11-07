@@ -73,8 +73,11 @@ const disbursementSchema = new Schema({
   applicationId: { type: Schema.Types.ObjectId, ref: 'LoanApplication', required: true },
   loanAccountId: { type: Schema.Types.ObjectId, ref: 'LoanAccount', required: true },
   amountMinor: { type: Number, required: true, min: 1 }, idempotencyKey: { type: String, required: true },
+  method: { type: String, default: '' }, reference: { type: String, default: '' }, notes: { type: String, default: '' },
   status: { type: String, enum: ['authorized', 'completed', 'cancelled'], default: 'authorized', index: true },
-  authorizedBy: { type: String, required: true }, completedBy: { type: String }, completedAt: { type: Date },
+  authorizedBy: { type: String, required: true }, authorizedAt: { type: Date, default: Date.now },
+  completedBy: { type: String }, completedAt: { type: Date },
+  cancelledBy: { type: String }, cancelledAt: { type: Date }, cancelReason: { type: String },
 }, { timestamps: true })
 disbursementSchema.index({ tenantId: 1, idempotencyKey: 1 }, { unique: true })
 disbursementSchema.index({ tenantId: 1, applicationId: 1 }, { unique: true })

@@ -243,7 +243,7 @@ router.post('/payments', requirePermission('repayments.capture'), asyncRoute(asy
 }))
 
 router.post(['/disbursements/authorize', '/disbursements'], requirePermission('loans.disburse.authorize'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ applicationId: z.string(), loanAccountId: z.string(), branchId: z.string(), amountMinor: z.number().int().positive(), idempotencyKey: z.string().min(8) }).parse(request.body)
+  const input = z.object({ applicationId: z.string(), loanAccountId: z.string(), branchId: z.string(), amountMinor: z.number().int().positive(), idempotencyKey: z.string().min(8), method: z.string().trim().min(2).max(80).optional(), reference: z.string().trim().min(2).max(120).optional(), notes: z.string().trim().max(1000).optional() }).parse(request.body)
   const user = currentUser(request)
   assertBranchAccess(request, input.branchId)
   const existing = await DisbursementModel.findOne({ tenantId: user.tenantId, idempotencyKey: input.idempotencyKey })
@@ -255,8 +255,8 @@ router.post(['/disbursements/authorize', '/disbursements'], requirePermission('l
   const loan = await LoanAccountModel.findOne({ _id: input.loanAccountId, tenantId: user.tenantId, branchId: input.branchId, applicationId: input.applicationId })
   if (!application || application.status !== 'approved' || !loan) throw new HttpError(409, 'DISBURSEMENT_NOT_ALLOWED', 'Only an approved application with a matching loan account can be disbursed.')
   if (input.amountMinor !== loan.principalMinor || loan.status !== 'pending_disbursement') throw new HttpError(409, 'INVALID_DISBURSEMENT_AMOUNT', 'Disbursement amount or loan state is invalid.')
-  const authorization = await DisbursementModel.create({ ...input, tenantId: user.tenantId, authorizedBy: user.id })
-  await recordAudit({ user, action: 'disbursement.authorized', entityType: 'disbursement', entityId: authorization.id, branchId: input.branchId, next: { amountMinor: input.amountMinor } })
+  const authorization = await DisbursementModel.create({ ...input, tenantId: user.tenantId, authorizedBy: user.id, authorizedAt: new Date(), method: input.method ?? '', reference: input.reference ?? input.idempotencyKey, notes: input.notes ?? '' })
+  await recordAudit({ user, action: 'disbursement.authorized', entityType: 'disbursement', entityId: authorization.id, branchId: input.branchId, next: { amountMinor: input.amountMinor, method: input.method, reference: input.reference ?? input.idempotencyKey } })
   response.status(201).json({ success: true, message: 'Disbursement authorized', data: authorization })
 }))
 
@@ -346,10 +346,14 @@ router.get('/disbursements', requirePermission('loans.accounts.view'), asyncRout
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   const filter = { tenantId: user.tenantId, ...(request.query.status ? { status: String(request.query.status) } : {}), ...(branchId ? { branchId } : user.branchIds.length ? { branchId: { $in: user.branchIds } } : {}) }
   const result = await paged(DisbursementModel, filter, options, { createdAt: -1 })
-  const data = await DisbursementModel.populate(result.data, [
+  const populated = await DisbursementModel.populate(result.data, [
     { path: 'loanAccountId', select: 'principalMinor status', populate: { path: 'customerId', select: 'name customerNumber phone' } },
     { path: 'applicationId', select: 'status' },
   ])
+  const ids = Array.from(new Set(populated.flatMap((d: any) => [d.authorizedBy, d.completedBy, d.cancelledBy]).filter(Boolean)))
+  const actors = ids.length ? await (await import('../identity/identity.model.js')).IdentityModel.find({ _id: { $in: ids } }).select('_id name email').lean() : []
+  const nameById = new Map(actors.map((a: any) => [String(a._id), a.name || a.email || String(a._id)]))
+  const data = populated.map((d: any) => ({ ...d, authorizedByName: nameById.get(String(d.authorizedBy)) || d.authorizedBy, completedByName: d.completedBy ? (nameById.get(String(d.completedBy)) || d.completedBy) : undefined, cancelledByName: d.cancelledBy ? (nameById.get(String(d.cancelledBy)) || d.cancelledBy) : undefined }))
   response.json({ success: true, message: 'Disbursements retrieved successfully', data, meta: result.meta })
 }))
 
@@ -361,8 +365,11 @@ router.post('/disbursements/:id/cancel', requirePermission('loans.disburse.autho
   assertBranchAccess(request, disbursement.branchId)
   if (disbursement.status !== 'authorized') throw new HttpError(409, 'INVALID_DISBURSEMENT_STATE', 'Only authorized disbursements can be cancelled.')
   disbursement.status = 'cancelled'
+  disbursement.cancelledBy = user.id
+  disbursement.cancelledAt = new Date()
+  disbursement.cancelReason = parsed.reason
   await disbursement.save()
-  await recordAudit({ user, action: 'disbursement.cancelled', entityType: 'disbursement', entityId: disbursement.id, branchId: disbursement.branchId, next: { status: disbursement.status, reason: parsed.reason } })
+  await recordAudit({ user, action: 'disbursement.cancelled', entityType: 'disbursement', entityId: disbursement.id, branchId: disbursement.branchId, next: { status: disbursement.status, reason: parsed.reason, cancelledBy: user.id } })
   response.json({ success: true, message: 'Disbursement cancelled', data: disbursement })
 }))
 
@@ -375,6 +382,61 @@ router.post('/loans/:id/request-plan', requirePermission('loans.accounts.manage'
   await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: parsed.type, reason: parsed.reason, metadata: { requestedDate: parsed.requestedDate, notes: parsed.notes }, createdBy: user.id })
   await recordAudit({ user, action: parsed.type, entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: parsed })
   response.json({ success: true, message: parsed.type === 'reschedule_request' ? 'Reschedule request recorded' : 'Payment plan request recorded', data: { loanId: loan.id } })
+}))
+
+router.post('/loans/:id/apply-plan', requirePermission('loans.accounts.manage'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ type: z.enum(['reschedule','payment_plan']), reason: z.string().min(3), months: z.number().int().min(1).max(60).default(1), startDate: z.string().optional() }).parse(request.body)
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
+  assertBranchAccess(request, loan.branchId)
+  if (!['active','in_arrears','restructured'].includes(loan.status)) throw new HttpError(409, 'INVALID_PLAN_STATE', 'Only active, in-arrears, or restructured loans can be rescheduled or put on a payment plan.')
+  const pending = await RepaymentScheduleModel.find({ tenantId: user.tenantId, loanAccountId: loan.id, status: { $in: ['pending','partially_paid','overdue'] } }).sort({ dueDate: 1, installmentNumber: 1 })
+  if (!pending.length) throw new HttpError(409, 'NO_PENDING_SCHEDULE', 'No pending schedule installments were found for this loan.')
+  const now = parsed.startDate ? new Date(parsed.startDate) : new Date()
+  if (Number.isNaN(now.getTime())) throw new HttpError(400, 'INVALID_START_DATE', 'Start date is invalid.')
+  if (parsed.type === 'reschedule') {
+    const shiftMs = parsed.months * 30 * 24 * 60 * 60 * 1000
+    for (const row of pending) { row.dueDate = new Date(new Date(row.dueDate).getTime() + shiftMs); if (row.status === 'overdue') row.status = 'pending'; await row.save() }
+    loan.status = 'restructured'; loan.version += 1; await loan.save()
+  } else {
+    // payment plan: spread pending totals into equal future installments without mutating historical paid rows
+    const total = pending.reduce((sum, r) => sum + Number(r.totalMinor || 0), 0)
+    const count = Math.max(parsed.months, 1)
+    const base = Math.floor(total / count); let rem = total - base * count
+    await RepaymentScheduleModel.deleteMany({ tenantId: user.tenantId, loanAccountId: loan.id, status: { $in: ['pending','partially_paid','overdue'] } })
+    const rows = Array.from({ length: count }, (_, i) => {
+      const amountMinor = base + (rem > 0 ? 1 : 0); rem = Math.max(0, rem - 1)
+      const dueDate = new Date(now); dueDate.setMonth(dueDate.getMonth() + i + 1)
+      return { tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, installmentNumber: i + 1, dueDate, principalMinor: amountMinor, interestMinor: 0, feesMinor: 0, totalMinor: amountMinor, status: 'pending' }
+    })
+    await RepaymentScheduleModel.insertMany(rows)
+    loan.status = 'restructured'; loan.version += 1; await loan.save()
+  }
+  await LoanEventModel.create({ tenantId: user.tenantId, branchId: loan.branchId, loanAccountId: loan.id, type: parsed.type === 'reschedule' ? 'rescheduled' : 'payment_plan_applied', reason: parsed.reason, metadata: { months: parsed.months, startDate: now.toISOString(), affected: pending.length }, createdBy: user.id })
+  await recordAudit({ user, action: parsed.type === 'reschedule' ? 'loan.rescheduled' : 'loan.payment_plan_applied', entityType: 'loan_account', entityId: loan.id, branchId: loan.branchId, next: { months: parsed.months, affected: pending.length, reason: parsed.reason } })
+  response.json({ success: true, message: parsed.type === 'reschedule' ? 'Loan schedule rescheduled' : 'Payment plan applied to pending schedule', data: { loanId: loan.id, affected: pending.length } })
+}))
+
+router.get('/payments/:id/receipt', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const payment = await PaymentModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate({ path: 'loanAccountId', populate: { path: 'customerId', select: 'name phone customerNumber' } }).lean()
+  if (!payment) throw new HttpError(404, 'PAYMENT_NOT_FOUND', 'Repayment was not found.')
+  assertBranchAccess(request, (payment as any).branchId)
+  response.type('text/html').send(`<!doctype html><html><head><meta charset="utf-8"><title>Payment receipt ${String((payment as any).reference||payment._id)}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}h1{margin:0 0 4px}.muted{color:#64748b}.grid{display:grid;grid-template-columns:180px 1fr;gap:8px;margin-top:16px}button{margin-top:16px;padding:8px 12px}</style></head><body><h1>LendFlow Payment Receipt</h1><div class="muted">Generated ${new Date().toISOString()}</div><div class="grid"><div>Receipt/Reference</div><div>${String((payment as any).reference||payment._id)}</div><div>Customer</div><div>${String((payment as any).loanAccountId?.customerId?.name||'—')}</div><div>Loan</div><div>${String((payment as any).loanAccountId?._id||'—')}</div><div>Amount</div><div>UGX ${(Number((payment as any).amountMinor||0)/100).toLocaleString()}</div><div>Method</div><div>${String((payment as any).method||'—')}</div><div>Status</div><div>${String((payment as any).status||'—')}</div><div>Date</div><div>${new Date((payment as any).createdAt||Date.now()).toLocaleString()}</div></div><button onclick="window.print()">Print / Save as PDF</button></body></html>`)
+}))
+
+router.get('/loans/:id/statement/export', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber').lean()
+  if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
+  assertBranchAccess(request, loan.branchId)
+  const [schedule, payments] = await Promise.all([
+    RepaymentScheduleModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ installmentNumber: 1 }).lean(),
+    PaymentModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
+  ])
+  const rows = ['type,date,reference,amount_minor,status,details', ...schedule.map((r: any) => `schedule,${new Date(r.dueDate).toISOString()},installment-${r.installmentNumber},${r.totalMinor},${r.status},`), ...payments.map((p: any) => `payment,${new Date(p.createdAt).toISOString()},${String(p.reference||'').replaceAll(',',' ')},${p.amountMinor},${p.status},${String(p.method||'').replaceAll(',',' ')}`)]
+  response.type('text/csv').setHeader('Content-Disposition', `attachment; filename="loan-statement-${loan._id}.csv"`).send(rows.join('\n'))
 }))
 
 export default router

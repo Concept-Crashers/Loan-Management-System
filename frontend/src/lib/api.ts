@@ -224,3 +224,26 @@ export function getLatestCreditAssessment(params: { applicationId?: string; cust
 export function calculateCreditScore(input: { applicationId?: string; customerId?: string }) {
   return apiRequest<CreditAssessment>('/api/v1/credit-assessments/calculate', { method: 'POST', body: JSON.stringify(input) })
 }
+
+export async function downloadAuthenticated(path: string, filename?: string) {
+  const headers: Record<string, string> = {}
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  const res = await fetch(path, { credentials: 'include', headers })
+  if (!res.ok) throw new Error(`Download failed (${res.status})`)
+  const ct = res.headers.get('content-type') || ''
+  if (ct.includes('text/html')) {
+    const html = await res.text()
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+    return
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'download'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+export function exportPaymentReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`) }
+export function exportLoanStatementCsv(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, `loan-statement-${id}.csv`) }

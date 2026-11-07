@@ -270,19 +270,30 @@ export const api = {
       return {
         id: String(record._id ?? record.id ?? ''),
         loan: String(loanObj?._id ?? record.loanAccountId ?? ''),
+        applicationId: String((record.applicationId as any)?._id ?? record.applicationId ?? ''),
         customer: String(customerObj?.name ?? customerObj?.customerNumber ?? 'Borrower'),
         amount: fromMinor(Number(record.amountMinor ?? 0)),
         branch: String(record.branchId ?? ''),
+        method: String(record.method ?? ''),
         status: String(record.status ?? 'authorized'),
+        state: record.status === 'completed' ? 'Completed' : record.status === 'cancelled' ? 'Cancelled' : 'Authorized',
         created: String(record.createdAt ?? '').slice(0, 10),
+        authorizedAt: String(record.authorizedAt ?? record.createdAt ?? '').slice(0, 19).replace('T',' '),
+        completedAt: record.completedAt ? String(record.completedAt).slice(0, 19).replace('T',' ') : '',
+        cancelledAt: record.cancelledAt ? String(record.cancelledAt).slice(0, 19).replace('T',' ') : '',
+        authorizedBy: String(record.authorizedByName ?? record.authorizedBy ?? ''),
+        completedBy: String(record.completedByName ?? record.completedBy ?? ''),
+        cancelledBy: String(record.cancelledByName ?? record.cancelledBy ?? ''),
         reference: String(record.reference ?? record.idempotencyKey ?? ''),
+        idempotencyKey: String(record.idempotencyKey ?? ''),
+        notes: String(record.notes ?? ''),
       }
     })
   },
   executeDisbursementRecord: (id: string) => apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/execute`, { method: 'POST' }),
   cancelDisbursementRecord: (id: string, reason: string) => apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  updateCollection: (id: string, input: { status: 'open' | 'contacted' | 'promise_to_pay' | 'escalated' | 'resolved'; notes?: string; followUpAt?: string; promiseAmountMinor?: number; promiseDueAt?: string }) =>
-    apiRequest(`/api/v1/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ notes: '', ...input }) }),
+  updateCollection: (id: string, input: { status?: 'open' | 'contacted' | 'promise_to_pay' | 'escalated' | 'resolved'; notes?: string; assignedTo?: string; assignedToName?: string; followUpAt?: string; promiseAmountMinor?: number; promiseDueAt?: string }) =>
+    apiRequest(`/api/v1/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   updateCollectionFollowup: (id: string, notes: string, status = 'contacted') =>
     apiRequest<Record<string, unknown>>(`/api/v1/collections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ notes, status }) }),
 
@@ -515,9 +526,19 @@ export const api = {
     apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/lifecycle`, { method: 'POST', body: JSON.stringify({ type, reason }) }),
   requestLoanPlan: (id: string, type: 'reschedule_request' | 'payment_plan_request', reason: string, extra: { requestedDate?: string; notes?: string } = {}) =>
     apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/request-plan`, { method: 'POST', body: JSON.stringify({ type, reason, ...extra }) }),
+  withdrawApplication: (id: string, reason: string, version: number) =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/withdraw`, { method: 'POST', body: JSON.stringify({ reason, version }) }),
+  transitionApplication: (id: string, status: 'under_review' | 'assessment_required' | 'info_requested' | 'approval_pending', reason: string, version: number) =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/transition`, { method: 'POST', body: JSON.stringify({ status, reason, version }) }),
+  addApplicationComment: (id: string, body: string, kind = 'review') =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/comments`, { method: 'POST', body: JSON.stringify({ body, kind }) }),
+  addApplicationAttachment: (id: string, input: { name: string; reference: string; kind?: string }) =>
+    apiRequest(`/api/v1/applications/${encodeURIComponent(id)}/attachments`, { method: 'POST', body: JSON.stringify(input) }),
+  applyLoanPlan: (id: string, type: 'reschedule' | 'payment_plan', reason: string, months = 1, startDate?: string) =>
+    apiRequest(`/api/v1/finance/loans/${encodeURIComponent(id)}/apply-plan`, { method: 'POST', body: JSON.stringify({ type, reason, months, ...(startDate ? { startDate } : {}) }) }),
 
-  authorizeDisbursement: (input: { loanId: string; applicationId: string; amount: number; method: string; reference?: string; idempotencyKey: string }) =>
-    apiRequest(`/api/v1/finance/disbursements/authorize`, { method: 'POST', body: JSON.stringify({ ...input, amountMinor: toMinor(input.amount) }) }),
+  authorizeDisbursement: (input: { loanAccountId: string; applicationId: string; branchId?: string; amount: number; method?: string; reference?: string; notes?: string; idempotencyKey: string }) =>
+    apiRequest(`/api/v1/finance/disbursements/authorize`, { method: 'POST', body: JSON.stringify({ applicationId: input.applicationId, loanAccountId: input.loanAccountId, branchId: input.branchId ?? branchId(), amountMinor: toMinor(input.amount), method: input.method, reference: input.reference, notes: input.notes, idempotencyKey: input.idempotencyKey }) }),
 
   executeDisbursement: (id: string) =>
     apiRequest(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/execute`, { method: 'POST' }),

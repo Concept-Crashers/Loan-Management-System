@@ -53,7 +53,7 @@ router.patch('/:id', requirePermission('loans.applications.create'), asyncRoute(
   const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
   if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
   assertBranchAccess(request, application.branchId)
-  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_EDIT_STATE', 'Approved, rejected, or cancelled applications cannot be edited.')
+  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'info_requested', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_EDIT_STATE', 'Approved, rejected, or cancelled applications cannot be edited.')
   if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
   const product = await LoanProductModel.findOne({ _id: application.productId, tenantId: user.tenantId }).lean()
   if (!product) throw new HttpError(404, 'PRODUCT_NOT_FOUND', 'Loan product was not found.')
@@ -77,7 +77,7 @@ router.post('/:id/decision', requirePermission('loans.applications.approve'), as
   const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
   if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
   assertBranchAccess(request, application.branchId)
-  const decidable = ['submitted', 'under_review', 'assessment_required', 'approval_pending']
+  const decidable = ['submitted', 'under_review', 'assessment_required', 'info_requested', 'approval_pending']
   if (application.version !== parsed.version || !decidable.includes(application.status)) throw new HttpError(409, 'INVALID_DECISION_STATE', `This application is no longer available for decision (status: ${application.status}, expected version ${application.version}). Refresh approvals and try again.`)
   const isPrivileged = (user.roles ?? []).some((r) => ['super_admin', 'super-admin', 'superadmin', 'admin'].includes(String(r).toLowerCase().replace(/\s+/g, '_')))
   if (!isPrivileged && application.officerId === user.id) throw new HttpError(403, 'SEPARATION_OF_DUTIES', 'The submitting officer cannot decide this application.')
@@ -98,15 +98,13 @@ router.post('/:id/decision', requirePermission('loans.applications.approve'), as
   await recordAudit({ user, action: `application.${parsed.decision}`, entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { status: application.status, reason: parsed.reason } })
   response.json({ success: true, message: `Application ${parsed.decision} successfully`, data: application })
 }))
-export default router
-
 router.post('/:id/cancel', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
   const parsed = z.object({ reason: z.string().min(3), version: z.number().int().positive() }).parse(request.body)
   const user = currentUser(request)
   const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
   if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
   assertBranchAccess(request, application.branchId)
-  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_CANCEL_STATE', 'This application cannot be cancelled in its current state.')
+  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'info_requested', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_CANCEL_STATE', 'This application cannot be cancelled in its current state.')
   if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
   application.status = 'cancelled'
   application.version += 1
@@ -115,3 +113,62 @@ router.post('/:id/cancel', requirePermission('loans.applications.create'), async
   await recordAudit({ user, action: 'application.cancelled', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { status: application.status, reason: parsed.reason } })
   response.json({ success: true, message: 'Application cancelled successfully', data: application })
 }))
+
+router.post('/:id/withdraw', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ reason: z.string().min(3), version: z.number().int().positive() }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  if (!['draft', 'submitted', 'under_review', 'assessment_required', 'info_requested', 'approval_pending'].includes(application.status)) throw new HttpError(409, 'INVALID_WITHDRAW_STATE', 'This application cannot be withdrawn in its current state.')
+  if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
+  application.status = 'withdrawn'; application.version += 1
+  application.decisionHistory.push({ actorId: user.id, decision: 'withdrawn', reason: parsed.reason, at: new Date() })
+  await application.save()
+  await recordAudit({ user, action: 'application.withdrawn', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { status: application.status, reason: parsed.reason } })
+  response.json({ success: true, message: 'Application withdrawn successfully', data: application })
+}))
+
+router.post('/:id/transition', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ status: z.enum(['under_review','assessment_required','info_requested','approval_pending']), reason: z.string().min(3), version: z.number().int().positive() }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  if (['approved','rejected','cancelled','withdrawn'].includes(application.status)) throw new HttpError(409, 'INVALID_TRANSITION', 'Terminal applications cannot change workflow state.')
+  if (application.version !== parsed.version) throw new HttpError(409, 'STALE_VERSION', `This application changed elsewhere (current version ${application.version}). Refresh and try again.`)
+  const previous = application.status
+  application.status = parsed.status; application.version += 1
+  application.decisionHistory.push({ actorId: user.id, decision: parsed.status, reason: parsed.reason, at: new Date() })
+  await application.save()
+  await recordAudit({ user, action: 'application.transitioned', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, previous: { status: previous }, next: { status: parsed.status, reason: parsed.reason } })
+  response.json({ success: true, message: `Application moved to ${parsed.status.replaceAll('_',' ')}`, data: application })
+}))
+
+router.post('/:id/comments', requirePermission('loans.applications.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ body: z.string().trim().min(2).max(2000), kind: z.string().trim().max(40).default('review') }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  const comment = { actorId: user.id, actorName: (user as any).name || user.email || user.id, body: parsed.body, kind: parsed.kind, at: new Date() }
+  ;(application.reviewComments as any[]).push(comment)
+  await application.save()
+  await recordAudit({ user, action: 'application.comment_added', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: { kind: parsed.kind } })
+  response.json({ success: true, message: 'Review comment added', data: application })
+}))
+
+router.post('/:id/attachments', requirePermission('loans.applications.create'), asyncRoute(async (request: AuthRequest, response) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(160), kind: z.string().trim().max(40).default('document'), reference: z.string().trim().min(1).max(300) }).parse(request.body)
+  const user = currentUser(request)
+  const application = await ApplicationModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+  if (!application) throw new HttpError(404, 'APPLICATION_NOT_FOUND', 'Application was not found.')
+  assertBranchAccess(request, application.branchId)
+  ;(application.attachments as any[]).push({ ...parsed, addedBy: user.id, addedAt: new Date() })
+  application.version += 1
+  await application.save()
+  await recordAudit({ user, action: 'application.attachment_added', entityType: 'loan_application', entityId: application.id, branchId: application.branchId, next: parsed })
+  response.json({ success: true, message: 'Attachment reference added', data: application })
+}))
+
+export default router
