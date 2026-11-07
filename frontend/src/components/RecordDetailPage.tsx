@@ -9,12 +9,13 @@ import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCredit
 import { api } from '../lib/services'
 import type { RootState } from '../store/store'
 
-const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
+const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements' | 'branches'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
   customers: { endpoint: 'customers', entity: 'customer', back: '/customers', title: 'Customer', editPath: (id) => `/customers/${id}/edit` },
   products: { endpoint: 'products', entity: 'loan_product', back: '/products', title: 'Loan product', editPath: (id) => `/products/${id}/edit` },
   applications: { endpoint: 'applications', entity: 'loan_application', back: '/applications', title: 'Loan application' },
   loans: { endpoint: 'loans', entity: 'loan_account', back: '/loans', title: 'Loan account' },
   repayments: { endpoint: 'payments', entity: 'repayment', back: '/repayments', title: 'Repayment' },
+  branches: { endpoint: 'branches', entity: 'branch', back: '/branches', title: 'Branch' },
 }
 
 const sensitiveFields = new Set([

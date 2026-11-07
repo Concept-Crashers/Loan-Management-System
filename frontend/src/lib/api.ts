@@ -194,8 +194,8 @@ export function listAuditEvents(page = 1, params: { entityType?: string; branchI
 export function listEntityAudit(entityType: string, entityId: string) {
   return apiRequest<PagedResult<AuditEvent>>(`/api/v1/audit/entity/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?page=1&pageSize=50`)
 }
-export function getRecordDetail(kind: 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements', id: string) {
-  const base = kind === 'payments' ? 'finance/payments' : kind === 'loans' ? 'finance/loans' : kind === 'products' ? 'loan-products' : kind === 'disbursements' ? 'finance/disbursements' : kind
+export function getRecordDetail(kind: 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements' | 'branches', id: string) {
+  const base = kind === 'payments' ? 'finance/payments' : kind === 'loans' ? 'finance/loans' : kind === 'products' ? 'loan-products' : kind === 'disbursements' ? 'finance/disbursements' : kind === 'branches' ? 'organisation/branches' : kind
   return apiRequest<Record<string, unknown>>(`/api/v1/${base}/${encodeURIComponent(id)}`)
 }
 

@@ -14,6 +14,13 @@ router.get('/branches', requirePermission('branches.view'), asyncRoute(async (re
   const result = await paged(BranchModel, { tenantId: currentUser(request).tenantId }, pagination(request), { name: 1 })
   response.json({ success: true, message: 'Branches retrieved successfully', ...result })
 }))
+router.get('/branches/:id', requirePermission('branches.view'), asyncRoute(async (request: AuthRequest, response) => {
+  const user = currentUser(request)
+  const branch = await BranchModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).lean()
+  if (!branch) throw new HttpError(404, 'BRANCH_NOT_FOUND', 'Branch was not found.')
+  const manager = branch.managerId ? await IdentityModel.findOne({ _id: branch.managerId, tenantId: user.tenantId }).select('name email').lean() : null
+  response.json({ success: true, message: 'Branch retrieved successfully', data: { ...branch, branchId: String(branch._id), managerName: (manager as any)?.name || (manager as any)?.email || branch.managerId || '' } })
+}))
 router.post('/branches', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
   const input = z.object({ code: z.string().min(2), name: z.string().min(2), district: z.string().min(2), managerId: z.string().optional() }).parse(request.body)
   const user = currentUser(request)
@@ -26,7 +33,7 @@ router.post('/branches', requirePermission('branches.manage'), asyncRoute(async 
   response.status(201).json({ success: true, message: 'Branch created successfully', data: branch })
 }))
 router.patch('/branches/:id', requirePermission('branches.manage'), asyncRoute(async (request: AuthRequest, response) => {
-  const input = z.object({ code: z.string().min(2).optional(), name: z.string().min(2).optional(), district: z.string().min(2).optional(), managerId: z.string().nullable().optional(), status: z.enum(['active', 'suspended']).optional() }).parse(request.body)
+  const input = z.object({ code: z.string().min(2).optional(), name: z.string().min(2).optional(), district: z.string().min(2).optional(), managerId: z.string().nullable().optional(), status: z.enum(['active', 'suspended']).optional(), settings: z.record(z.string(), z.unknown()).optional() }).parse(request.body)
   const user = currentUser(request)
   if (input.managerId) {
     const mgr = await IdentityModel.findOne({ _id: input.managerId, tenantId: user.tenantId }).select('_id').lean()

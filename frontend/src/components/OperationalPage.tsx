@@ -101,7 +101,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [actionReason, setActionReason] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
   const [branchModal, setBranchModal] = useState(false)
-  const [branchForm, setBranchForm] = useState({ code: '', name: '', district: '', managerId: '' })
+  const [branchForm, setBranchForm] = useState({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' })
   const [branchSaving, setBranchSaving] = useState(false)
   const [editBranch, setEditBranch] = useState<TableRow | null>(null)
   const [staffOptions, setStaffOptions] = useState<Array<{ id: string; name: string }>>([])
@@ -179,7 +179,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, email: item.email, phone: item.phone, role: item.role, branch: item.branch, lastActive: item.lastActive, status: item.status })))
       } else if (path === '/branches') {
         const rows = await api.listBranches()
-        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, district: item.district, manager: item.manager, staff: item.staff, activeLoans: item.activeLoans, status: item.status })))
+        setRemoteRows(rows.map((item) => ({ id: item.id, branchId: item.branchId ?? item.id, code: item.code ?? '', name: item.name, district: item.district, managerId: item.managerId ?? '', manager: item.manager, staff: item.staff, activeLoans: item.activeLoans, status: item.status, createdAt: item.createdAt ?? '', updatedAt: item.updatedAt ?? '' })))
       } else if (path === '/audit-logs') {
         const rows = await api.listAuditLogs()
         setRemoteRows(rows.map((item) => ({ id: item.id, action: item.action, description: item.description, actor: item.actor, record: item.record, branch: item.branch, date: item.date })) as any)
@@ -302,7 +302,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     setBranchSaving(true)
     try {
       if (editBranch) {
-        await api.updateBranch(String(editBranch.id), { name: branchForm.name.trim(), district: branchForm.district.trim(), managerId: branchForm.managerId || null })
+        await api.updateBranch(String(editBranch.id), { name: branchForm.name.trim(), district: branchForm.district.trim(), managerId: branchForm.managerId || null, status: branchForm.status as 'active' | 'suspended' })
         toast.success('Branch updated')
         setEditBranch(null)
       } else {
@@ -310,7 +310,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         toast.success('Branch created')
         setBranchModal(false)
       }
-      setBranchForm({ code: '', name: '', district: '', managerId: '' }); await loadData()
+      setBranchForm({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' }); await loadData()
     } catch (e) { toast.error(e instanceof Error ? e.message : (editBranch ? 'Branch could not be updated.' : 'Branch could not be created.')) } finally { setBranchSaving(false) }
   }
 
@@ -337,7 +337,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const headingAction = definition.newTo
     ? <Button onClick={() => navigate(definition.newTo!)}>{definition.newLabel ?? 'Add new'} <span>+</span></Button>
     : definition.newLabel
-      ? <Button onClick={() => path === '/branches' ? (setEditBranch(null), setBranchForm({ code: '', name: '', district: '', managerId: '' }), setBranchModal(true)) : path === '/staff' ? setStaffModal(true) : navigate('/settings')}>+ {definition.newLabel}</Button>
+      ? <Button onClick={() => path === '/branches' ? (setEditBranch(null), setBranchForm({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' }), setBranchModal(true)) : path === '/staff' ? setStaffModal(true) : navigate('/settings')}>+ {definition.newLabel}</Button>
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
@@ -450,7 +450,8 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/branches' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditBranch(row); setBranchForm({ code: String((row as any).code ?? row.id ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: String((row as any).managerId ?? '') }); setBranchModal(true) }}>Edit branch</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditBranch(row); setBranchForm({ branchId: String((row as any).branchId ?? row.id ?? ''), code: String((row as any).code ?? ''), name: String(row.name ?? ''), district: String(row.district ?? ''), managerId: String((row as any).managerId ?? ''), status: String((row as any).status ?? 'Active').toLowerCase() === 'active' ? 'active' : 'suspended', createdAt: String((row as any).createdAt ?? ''), updatedAt: String((row as any).updatedAt ?? '') }); setBranchModal(true) }}>Edit branch</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => navigate(`/branches/${encodeURIComponent(String((row as any).branchId ?? row.id))}`)}>View branch</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateBranch(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Branch deactivated' : 'Branch activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Branch status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? 'Deactivate' : 'Activate'}</DropdownMenu.Item>
                                 </>
                               )}
@@ -654,18 +655,22 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
         </DialogContent>
       </Dialog>
 
-      <Dialog open={branchModal} onOpenChange={(open) => { setBranchModal(open); if (!open) { setEditBranch(null); setBranchForm({ code: '', name: '', district: '', managerId: '' }) } }}>
-        <DialogContent title={editBranch ? 'Edit branch' : 'Add branch'} description={editBranch ? 'Update branch details and branch manager assignment.' : 'Create a branch and optionally assign a branch manager from staff.'} className="record-dialog">
+      <Dialog open={branchModal} onOpenChange={(open) => { setBranchModal(open); if (!open) { setEditBranch(null); setBranchForm({ branchId: '', code: '', name: '', district: '', managerId: '', status: 'active', createdAt: '', updatedAt: '' }) } }}>
+        <DialogContent title={editBranch ? 'Edit branch' : 'Add branch'} description={editBranch ? 'View and update all branch fields. Branch ID and timestamps are system-managed.' : 'Create a branch and optionally assign a branch manager from staff.'} className="record-dialog">
           <div className="form-grid" style={{ marginTop: 8 }}>
-            <Field label="Branch code" required={!editBranch}><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" disabled={!!editBranch} /></Field>
+            {editBranch && <Field label="Branch ID (system record)" hint="MongoDB/Object ID for this branch"><Input value={branchForm.branchId} readOnly className="mono-text" /></Field>}
+            <Field label="Branch code" required={!editBranch} hint={editBranch ? 'Code is read-only after creation.' : 'Unique branch code, e.g. KLA-01'}><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" disabled={!!editBranch} /></Field>
             <Field label="Branch name" required><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Kampala Main" /></Field>
             <Field label="District" required><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
+            <Field label="Status"><Select value={branchForm.status} onChange={(e) => setBranchForm({ ...branchForm, status: e.target.value })}><option value="active">Active</option><option value="suspended">Suspended</option></Select></Field>
             <Field label="Branch manager">
               <Select value={branchForm.managerId} onChange={(e) => setBranchForm({ ...branchForm, managerId: e.target.value })}>
-                <option value="">{editBranch ? 'Keep/change manager (select staff to set)' : 'No manager assigned'}</option>
+                <option value="">No manager assigned</option>
                 {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
             </Field>
+            {editBranch && <Field label="Created"><Input value={branchForm.createdAt ? new Date(branchForm.createdAt).toLocaleString() : '—'} readOnly /></Field>}
+            {editBranch && <Field label="Last updated"><Input value={branchForm.updatedAt ? new Date(branchForm.updatedAt).toLocaleString() : '—'} readOnly /></Field>}
           </div>
           <div className="dialog-actions">
             <Button variant="outline" disabled={branchSaving} onClick={() => { setBranchModal(false); setEditBranch(null) }}>Cancel</Button>

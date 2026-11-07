@@ -45,14 +45,19 @@ type BackendProduct = {
 
 export interface BranchRecord {
   id: string
+  branchId?: string
   code?: string
   name: string
   district: string
   managerId?: string
+  managerName?: string
   manager: string
   staff: string
   activeLoans: string
   status: 'Active' | 'Suspended'
+  settings?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
 }
 
 const branchId = () => {
@@ -358,14 +363,19 @@ export const api = {
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => ({
       id: String(record._id ?? record.id ?? record.code ?? ''),
+      branchId: String(record._id ?? record.id ?? ''),
       code: String(record.code ?? ''),
       name: String(record.name ?? ''),
       district: String(record.district ?? ''),
       managerId: String(record.managerId ?? ''),
+      managerName: String(record.managerName ?? ''),
       manager: String(record.managerName ?? record.managerId ?? '—'),
       staff: String(record.staffCount ?? '0'),
       activeLoans: String(record.activeLoans ?? '0'),
       status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
+      settings: (record.settings as Record<string, unknown> | undefined) ?? {},
+      createdAt: String(record.createdAt ?? ''),
+      updatedAt: String(record.updatedAt ?? ''),
     }))
   },
 
@@ -375,7 +385,7 @@ export const api = {
   createBranch: (input: { code: string; name: string; district: string; managerId?: string }) =>
     apiRequest<BranchRecord>('/api/v1/organisation/branches', { method: 'POST', body: JSON.stringify(input) }),
 
-  updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null; status?: 'active' | 'suspended' }) =>
+  updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null; status?: 'active' | 'suspended'; settings?: Record<string, unknown> }) =>
     apiRequest<BranchRecord>(`/api/v1/organisation/branches/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
   updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string }) =>
