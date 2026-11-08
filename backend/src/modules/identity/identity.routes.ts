@@ -93,6 +93,7 @@ router.post('/login', asyncRoute(async (request, response) => {
   identity.refreshTokenHash = await bcrypt.hash(refreshToken, 12)
   identity.failedLoginCount = 0
   await identity.save()
+  await recordAudit({ user, action: 'identity.login', entityType: 'identity', entityId: identity.id, branchId: identity.branchIds?.[0], next: { email: identity.email, roles: identity.roles, mfaUsed: Boolean(identity.mfaEnabled), ip: request.ip, userAgent: request.header('user-agent') ?? '' } }).catch(() => {})
   response.cookie('lendflow_refresh', refreshToken, { httpOnly: true, secure: true, sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax', maxAge: 30 * 24 * 60 * 60 * 1000, path: '/api/v1/auth' })
   response.json({ success: true, message: 'Signed in successfully', data: { accessToken, user } })
 }))
