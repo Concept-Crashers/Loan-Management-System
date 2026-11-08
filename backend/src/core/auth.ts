@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { IdentityModel } from '../modules/identity/identity.model.js'
 import { RolePermissionModel } from '../modules/identity/role-permission.model.js'
-import { ALL_PERMISSIONS, normalizeRoleName } from '../modules/identity/permissions.js'
+import { ALL_PERMISSIONS, expandPermissionAliases, normalizeRoleName } from '../modules/identity/permissions.js'
 import { env } from '../config/env.js'
 import { HttpError } from './http.js'
 
@@ -26,7 +26,7 @@ function isPrivileged(roles: string[] = []) {
 async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
   const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
   if (normalized.some((r) => ['super_admin', 'superadmin'].includes(r))) return ['*', ...ALL_PERMISSIONS]
-  if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
+  if (!normalized.length) return expandPermissionAliases([...new Set((explicit ?? []).filter(Boolean))])
   const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
   const mappedByRole = new Map(mapped.map((m) => [m.normalizedRole, (m.permissions ?? []).filter(Boolean)]))
   const rolePerms = normalized.flatMap((role) => {
@@ -35,7 +35,7 @@ async function resolveEffectivePermissions(tenantId: string, roles: string[] = [
     if (role === 'admin') return [...ALL_PERMISSIONS] // legacy default: admin keeps full access until super admin configures it
     return []
   })
-  return [...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))]
+  return expandPermissionAliases([...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))])
 }
 
 export async function requireAuth(request: AuthRequest, _response: Response, next: NextFunction) {

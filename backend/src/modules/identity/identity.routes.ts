@@ -9,7 +9,7 @@ import { signAccessToken, type AuthUser, requireAuth, type AuthRequest, requireP
 import { currentUser } from '../../core/scope.js'
 import { IdentityModel } from './identity.model.js'
 import { RolePermissionModel } from './role-permission.model.js'
-import { ALL_PERMISSIONS, DEFAULT_ROLES, PERMISSION_GROUPS, displayRoleName, normalizeRoleName } from './permissions.js'
+import { ALL_PERMISSIONS, DEFAULT_ROLES, PERMISSION_GROUPS, displayRoleName, expandPermissionAliases, normalizeRoleName } from './permissions.js'
 import { emailProvider } from '../../infrastructure/messaging/providers.js'
 import { recordAudit } from '../audit/audit.service.js'
 
@@ -56,7 +56,7 @@ function validTotp(secret: string, input: string) {
 async function resolveEffectivePermissions(tenantId: string, roles: string[] = [], explicit: string[] = []) {
   const normalized = [...new Set((roles ?? []).map(normalizeRoleName).filter(Boolean))]
   if (normalized.some((r) => ['super_admin', 'superadmin'].includes(r))) return ['*', ...ALL_PERMISSIONS]
-  if (!normalized.length) return [...new Set((explicit ?? []).filter(Boolean))]
+  if (!normalized.length) return expandPermissionAliases([...new Set((explicit ?? []).filter(Boolean))])
   const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
   const mappedByRole = new Map(mapped.map((m) => [m.normalizedRole, (m.permissions ?? []).filter(Boolean)]))
   const rolePerms = normalized.flatMap((role) => {
@@ -65,7 +65,7 @@ async function resolveEffectivePermissions(tenantId: string, roles: string[] = [
     if (role === 'admin') return [...ALL_PERMISSIONS]
     return []
   })
-  return [...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))]
+  return expandPermissionAliases([...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))])
 }
 
 function publicUser(identity: { id: string; name?: string; email?: string; phone?: string; tenantId: string; branchIds: string[]; roles: string[]; permissions: string[]; mfaEnabled?: boolean }): AuthUser & { mfaEnabled?: boolean; phone?: string } {

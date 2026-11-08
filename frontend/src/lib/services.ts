@@ -337,6 +337,7 @@ export const api = {
         phone: String(record.phone ?? ''),
         role: Array.isArray(record.roles) ? (record.roles as string[]).join(', ') : 'Staff',
         branch: Array.isArray(record.branchIds) && (record.branchIds as unknown[]).length ? String((record.branchIds as string[])[0]) : '—',
+        branchIds: Array.isArray(record.branchIds) ? (record.branchIds as unknown[]).map(String) : [],
         lastActive: '—',
         status: String(record.status ?? 'active') === 'active' ? 'Active' : 'Suspended',
       }))
@@ -392,7 +393,7 @@ export const api = {
   updateBranch: (id: string, input: { code?: string; name?: string; district?: string; managerId?: string | null; status?: 'active' | 'suspended'; settings?: Record<string, unknown> }) =>
     apiRequest<BranchRecord>(`/api/v1/organisation/branches/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
-  updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string }) =>
+  updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string; branchIds?: string[] }) =>
     apiRequest<{ data?: unknown }>(`/api/v1/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
   updateLoanProduct: (id: string, input: { name?: string; status?: 'draft' | 'active' | 'inactive'; terms?: { minAmountMinor?: number; maxAmountMinor?: number; annualRateBps?: number; interestMethod?: 'flat' | 'declining_balance'; repaymentFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly'; minTenureMonths?: number; maxTenureMonths?: number; gracePeriodDays?: number } }) =>

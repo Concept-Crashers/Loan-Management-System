@@ -35,6 +35,35 @@ export const PERMISSION_GROUPS: Array<{ key: string; label: string; permissions:
   { key: 'notifications', label: 'Notifications & devices', permissions: ['notifications.view','notifications.manage','devices.register','devices.revoke'] },
 ]
 
+export const PERMISSION_ALIASES: Record<string, string[]> = {
+  'loans.applications.view': ['applications.view'],
+  'applications.view': ['loans.applications.view'],
+  'loans.applications.create': ['applications.create'],
+  'applications.create': ['loans.applications.create'],
+  'loans.applications.approve': ['applications.decide'],
+  'applications.decide': ['loans.applications.approve'],
+  'loans.products.view': ['loan-products.view'],
+  'loan-products.view': ['loans.products.view'],
+  'loans.products.create': ['loan-products.manage'],
+  'loan-products.manage': ['loans.products.create'],
+  'identity.users.view': ['users.view'],
+  'users.view': ['identity.users.view'],
+  'identity.users.create': ['users.manage'],
+  'identity.users.update': ['users.manage'],
+  'users.manage': ['identity.users.create', 'identity.users.update'],
+}
+
+export function expandPermissionAliases(perms: string[]) {
+  const out = new Set<string>()
+  for (const raw of perms ?? []) {
+    const p = String(raw || '').trim()
+    if (!p) continue
+    out.add(p)
+    for (const alias of PERMISSION_ALIASES[p] ?? []) out.add(alias)
+  }
+  return [...out]
+}
+
 export const DEFAULT_ROLES = [
   'super_admin', 'admin', 'manager', 'loan_officer', 'credit_officer', 'approver', 'cashier', 'accountant', 'collections_officer',
 ]

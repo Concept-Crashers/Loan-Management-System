@@ -109,11 +109,12 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [editBranch, setEditBranch] = useState<TableRow | null>(null)
   const [staffOptions, setStaffOptions] = useState<Array<{ id: string; name: string }>>([])
   const [staffModal, setStaffModal] = useState(false)
-  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' })
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer', branchIds: [] as string[] })
   const [staffSaving, setStaffSaving] = useState(false)
   const [staffShowPassword, setStaffShowPassword] = useState(false)
+  const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string }>>([])
   const [editStaff, setEditStaff] = useState<TableRow | null>(null)
-  const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer' })
+  const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer', branchIds: [] as string[] })
   const [editStaffSaving, setEditStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
   const [followupStatus, setFollowupStatus] = useState<'contacted' | 'promise_to_pay' | 'escalated' | 'resolved' | 'open'>('contacted')
@@ -181,7 +182,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(rows.map((item) => ({ id: item.id, type: item.type, reference: item.reference, customer: item.customer, amount: item.amount, method: item.method, date: item.date, status: item.status, recordedBy: item.recordedBy })))
       } else if (path === '/staff') {
         const rows = await api.listStaff()
-        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, email: item.email, phone: item.phone, role: item.role, branch: item.branch, lastActive: item.lastActive, status: item.status })))
+        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, email: item.email, phone: item.phone, role: item.role, branch: item.branch, branchIds: (item as any).branchIds ?? [], lastActive: item.lastActive, status: item.status })))
       } else if (path === '/branches') {
         const rows = await api.listBranches()
         setRemoteRows(rows.map((item) => ({ id: item.id, branchId: item.branchId ?? item.id, code: item.code ?? '', name: item.name, district: item.district, managerId: item.managerId ?? '', manager: item.manager, staff: item.staff, activeLoans: item.activeLoans, status: item.status, createdAt: item.createdAt ?? '', updatedAt: item.updatedAt ?? '' })))
@@ -205,10 +206,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }, [path])
 
   useEffect(() => {
-    if (!branchModal && !editBranch) return
-    if (staffOptions.length) return
-    void api.listStaff().then((rows) => setStaffOptions(rows.map((r) => ({ id: r.id, name: r.name })))).catch(() => {})
-  }, [branchModal, editBranch, staffOptions.length])
+    if (!branchModal && !editBranch && !staffModal && !editStaff) return
+    if (!staffOptions.length) void api.listStaff().then((rows) => setStaffOptions(rows.map((r) => ({ id: r.id, name: r.name })))).catch(() => {})
+    if (!branchOptions.length) void api.listBranches().then((rows) => setBranchOptions(rows.map((r) => ({ id: String((r as any).branchId ?? r.id), name: String(r.name ?? r.id) })))).catch(() => {})
+  }, [branchModal, editBranch, staffModal, editStaff, staffOptions.length, branchOptions.length])
 
   const allRows = remoteRows ?? []
   const filterKey = definition.filterKey
@@ -239,7 +240,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   function openRow(row: TableRow) {
     if (path === '/staff' && isSuperAdmin) {
       setEditStaff(row)
-      setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' })
+      setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer', branchIds: Array.isArray((row as any).branchIds) ? (row as any).branchIds.map(String) : [] })
       return
     }
     const key = definition.detailKey ? row[definition.detailKey] : undefined
@@ -323,20 +324,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 8) { toast.error('Enter name, valid email, and a password with at least 8 characters.'); return }
     setStaffSaving(true)
     try {
-      await api.createStaffUser({ name: staffForm.name.trim(), email: staffForm.email.trim(), password: staffForm.password, phone: staffForm.phone.trim() || undefined, roles: [staffForm.roles] })
+      await api.createStaffUser({ name: staffForm.name.trim(), email: staffForm.email.trim(), password: staffForm.password, phone: staffForm.phone.trim() || undefined, roles: [staffForm.roles], branchIds: staffForm.branchIds.length ? staffForm.branchIds : undefined })
       toast.success('Staff user created')
-      setStaffModal(false); setStaffForm({ name: '', email: '', password: '', phone: '', roles: 'loan_officer' }); await loadData()
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be created.') } finally { setStaffSaving(false) }
+      setStaffModal(false); setStaffForm({ name: '', email: '', password: '', phone: '', roles: 'loan_officer', branchIds: [] }); await loadData()
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be created. Check identity.users.create permission and branch access.') } finally { setStaffSaving(false) }
   }
 
   async function saveEditStaff() {
     if (!editStaff) return
     setEditStaffSaving(true)
     try {
-      await api.updateStaffUser(String(editStaff.id), { name: editStaffForm.name.trim() || undefined, email: editStaffForm.email.trim() || undefined, phone: editStaffForm.phone.trim() || undefined, roles: [editStaffForm.roles] })
+      await api.updateStaffUser(String(editStaff.id), { name: editStaffForm.name.trim() || undefined, email: editStaffForm.email.trim() || undefined, phone: editStaffForm.phone.trim() || undefined, roles: [editStaffForm.roles], branchIds: editStaffForm.branchIds })
       toast.success('Staff user updated')
       setEditStaff(null); await loadData()
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be updated.') } finally { setEditStaffSaving(false) }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff user could not be updated. Check identity.users.update permission and branch access.') } finally { setEditStaffSaving(false) }
   }
 
   const headingAction = definition.newTo
@@ -456,7 +457,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/staff' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditStaff(row); setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer' }) }}><UserCog size={15} /> Edit staff</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={() => { setEditStaff(row); setEditStaffForm({ name: String(row.name ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), roles: String(row.role ?? 'loan_officer').split(',')[0]?.trim() || 'loan_officer', branchIds: Array.isArray((row as any).branchIds) ? (row as any).branchIds.map(String) : [] }) }}><UserCog size={15} /> Edit staff</DropdownMenu.Item>
                                   <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const active = String(row.status ?? '').toLowerCase() === 'active'; await api.updateStaffUser(String(row.id), { status: active ? 'suspended' : 'active' }); toast.success(active ? 'Staff deactivated' : 'Staff activated'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Staff status could not be updated.') } }}>{String(row.status ?? '').toLowerCase() === 'active' ? <><UserMinus size={15} /> Deactivate</> : <><UserPlus size={15} /> Activate</>}</DropdownMenu.Item>
                                   {canManageUsers && <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const out = await api.resetStaffPassword(String(row.id)); toast.success(out?.resetToken ? `Password reset created. Token: ${String(out.resetToken).slice(0, 10)}…` : 'Password reset initiated') } catch (e) { toast.error(e instanceof Error ? e.message : 'Password reset could not be initiated.') } }}><KeyRound size={15} /> Reset password</DropdownMenu.Item>}
                                 </>
@@ -730,6 +731,12 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
                 <option value="admin">Admin</option>
               </select>
             </Field>
+            <Field label="Branch assignment" hint="Select a branch for scoped users. Leave unassigned only if the role/workflow allows tenant-wide access.">
+              <select className="lf-input" value={staffForm.branchIds[0] ?? ''} onChange={(e) => setStaffForm({ ...staffForm, branchIds: e.target.value ? [e.target.value] : [] })}>
+                <option value="">No branch assigned</option>
+                {branchOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </Field>
           </div>
           <div className="dialog-actions">
             <Button variant="outline" icon={X} disabled={staffSaving} onClick={() => setStaffModal(false)}>Cancel</Button>
@@ -739,7 +746,7 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
       </Dialog>
 
       <Dialog open={!!editStaff} onOpenChange={(open) => !open && setEditStaff(null)}>
-        <DialogContent title="Edit staff" description="Update staff details and role. To assign a branch manager, create/edit a branch and select this staff member." className="record-dialog">
+        <DialogContent title="Edit staff" description="Update staff details, role, and branch assignment. Branch assignment controls which branch-scoped records the user can access." className="record-dialog">
           <div className="form-grid" style={{ marginTop: 8 }}>
             <Field label="Full name"><Input value={editStaffForm.name} onChange={(e) => setEditStaffForm({ ...editStaffForm, name: e.target.value })} /></Field>
             <Field label="Email"><Input type="email" value={editStaffForm.email} onChange={(e) => setEditStaffForm({ ...editStaffForm, email: e.target.value })} /></Field>
@@ -752,6 +759,12 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
                 <option value="finance">Finance / accounting</option>
                 <option value="collections">Collections</option>
                 <option value="admin">Admin</option>
+              </select>
+            </Field>
+            <Field label="Branch assignment" hint="Assign a branch so scoped users can access branch data without BRANCH_FORBIDDEN errors.">
+              <select className="lf-input" value={editStaffForm.branchIds[0] ?? ''} onChange={(e) => setEditStaffForm({ ...editStaffForm, branchIds: e.target.value ? [e.target.value] : [] })}>
+                <option value="">No branch assigned</option>
+                {branchOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </Field>
           </div>
