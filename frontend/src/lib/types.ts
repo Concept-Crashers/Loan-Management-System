@@ -98,6 +98,7 @@ export interface ScheduleInstallment {
   loan: string
   due: string
   expected: number
+  interest?: number
   paid: number
   status: 'Paid' | 'Due soon' | 'Due today' | 'Overdue' | 'Upcoming'
   officer: string

@@ -238,6 +238,7 @@ export const api = {
         customer: loanObj?.customerId?.name ?? 'Borrower',
         due: String(record.dueDate ?? '').slice(0, 10),
         expected: fromMinor(Number(record.totalMinor ?? 0)),
+        interest: fromMinor(Number(record.interestMinor ?? 0)),
         paid: 0,
         officer: 'Loan Officer',
         status: record.status === 'paid' ? 'Paid' : record.status === 'overdue' ? 'Overdue' : 'Due soon',
