@@ -109,17 +109,19 @@ export interface ReportPDFOptions {
   toDate: string
   org: OrgInfo
   summary?: { totalDisbursed?: number; totalRepayments?: number; totalOutstanding?: number; parRate?: string }
+  save?: boolean
 }
 
-export async function exportReportPDF(options: ReportPDFOptions): Promise<void> {
+export async function exportReportPDF(options: ReportPDFOptions): Promise<Blob | void> {
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
-  const { reportLabel, rows, fromDate, toDate, org, summary } = options
+  const { reportLabel, rows, fromDate, toDate, org, summary, save = true } = options
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const docNo = docNumber('RPT')
   const now = new Date()
+  const filename = `${reportLabel.toLowerCase().replace(/\s+/g, '-')}-${now.toISOString().slice(0, 10)}.pdf`
 
   // ── TOP HEADER BAR ──
   doc.setFillColor(...NAVY)
@@ -285,7 +287,8 @@ export async function exportReportPDF(options: ReportPDFOptions): Promise<void> 
     })
   }
 
-  doc.save(`${reportLabel.toLowerCase().replace(/\s+/g, '-')}-${now.toISOString().slice(0, 10)}.pdf`)
+  if (!save) return doc.output('blob') as Blob
+  doc.save(filename)
 }
 
 // ─── B. exportReportExcel ─────────────────────────────────────────────────────
@@ -405,18 +408,21 @@ export interface ReceiptData {
   repayment: Repayment
   loan?: LoanAccount
   org: OrgInfo
+  save?: boolean
+  filename?: string
 }
 
-export async function generateReceiptPDF(data: ReceiptData): Promise<void> {
+export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void> {
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
-  const { repayment, loan, org } = data
+  const { repayment, loan, org, save = true, filename } = data
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
   const receiptNo = docNumber('RCT')
   const now = new Date()
+  const outName = filename || `receipt-${receiptNo}.pdf`
 
   // ── HEADER BAR ──
   doc.setFillColor(...NAVY)
@@ -590,7 +596,8 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<void> {
   doc.setTextColor(...WHITE)
   doc.text(`${org.companyName} · Loan Management System · Generated: ${fmtDateTime(now)}`, W / 2, H - 4, { align: 'center' })
 
-  doc.save(`receipt-${receiptNo}.pdf`)
+  if (!save) return doc.output('blob') as Blob
+  doc.save(outName)
 }
 
 // ─── D. generateLoanStatementPDF ─────────────────────────────────────────────
@@ -601,18 +608,21 @@ export interface LoanStatementData {
   schedule?: ScheduleInstallment[]
   org: OrgInfo
   customerInfo?: { address?: string; phone?: string; email?: string }
+  save?: boolean
+  filename?: string
 }
 
-export async function generateLoanStatementPDF(data: LoanStatementData): Promise<void> {
+export async function generateLoanStatementPDF(data: LoanStatementData): Promise<Blob | void> {
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
-  const { loan, repayments, schedule, org, customerInfo } = data
+  const { loan, repayments, schedule, org, customerInfo, save = true, filename } = data
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
   const stmNo = docNumber('STM')
   const now = new Date()
+  const outName = filename || `loan-statement-${loan.ref || stmNo}-${now.toISOString().slice(0, 10)}.pdf`
 
   // ── HEADER BAR (same as receipt) ──
   doc.setFillColor(...NAVY)
@@ -827,6 +837,7 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
     doc.text(`Page ${pg} of ${totalPages}`, W - 10, H - 7, { align: 'right' })
   }
 
-  doc.save(`loan-statement-${loan.ref || stmNo}-${now.toISOString().slice(0, 10)}.pdf`)
+  if (!save) return doc.output('blob') as Blob
+  doc.save(outName)
 }
 

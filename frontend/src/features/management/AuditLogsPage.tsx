@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { Download, MessageCircle, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, Card, Input, StatusBadge } from '../../components/ui/primitives'
 import { listAuditEvents, shareBlob, type AuditEvent, type PagedResult } from '../../lib/api'
+import { exportReportExcel, type OrgInfo } from '../../lib/exportDocs'
+import type { RootState } from '../../store/store'
 
 export function AuditLogsPage() {
+  const branding = useSelector((state: RootState) => state.branding)
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
   const [result, setResult] = useState<PagedResult<AuditEvent>>({ data: [], meta: { page: 1, pageSize: 25, total: 0, pageCount: 1 } })
   const [page, setPage] = useState(1)
   const [entityType, setEntityType] = useState('')
@@ -16,15 +21,19 @@ export function AuditLogsPage() {
     finally { setLoading(false) }
   }
   useEffect(() => { void load() }, [page, entityType])
-  function exportRows() {
-    const csv = ['actor,action,detail,entityType,entityId,createdAt', ...(result.data ?? []).map((event) => [event.actorName ?? event.actorId, event.action, event.detail ?? '', event.entityType, event.entityId, event.createdAt].map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))].join('\n')
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'audit-logs.csv'; anchor.click(); URL.revokeObjectURL(url)
+  async function exportRows() {
+    if (!result.data?.length) { toast.info('There are no audit events to export.'); return }
+    const rows = (result.data ?? []).map((event) => ({ actor: event.actorName ?? event.actorId, action: event.action, detail: event.detail ?? '', entity_type: event.entityType, entity_id: event.entityId, created_at: event.createdAt }))
+    try { await exportReportExcel({ reportLabel: 'Audit logs', reportKey: 'audit-logs', rows, fromDate: '', toDate: '', org }); toast.success('Audit logs exported') }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Audit logs export failed.') }
   }
   async function shareRows() {
-    const csv = ['actor,action,detail,entityType,entityId,createdAt', ...(result.data ?? []).map((event) => [event.actorName ?? event.actorId, event.action, event.detail ?? '', event.entityType, event.entityId, event.createdAt].map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    if (!result.data?.length) { toast.info('There are no audit events to share.'); return }
+    const rows = (result.data ?? []).map((event) => ({ actor: event.actorName ?? event.actorId, action: event.action, detail: event.detail ?? '', entity_type: event.entityType, entity_id: event.entityId, created_at: event.createdAt }))
     try {
-      const resultShare = await shareBlob(blob, 'audit-logs.csv', 'Audit logs (CSV)', 'Audit logs export from Trust Loans.')
+      const blob = await exportReportExcel({ reportLabel: 'Audit logs', reportKey: 'audit-logs', rows, fromDate: '', toDate: '', org, save: false })
+      if (!(blob instanceof Blob)) throw new Error('Audit logs export could not be prepared.')
+      const resultShare = await shareBlob(blob, 'audit-logs.xlsx', 'Audit logs export', `Audit logs export from ${org.companyName}.`)
       if (resultShare !== 'cancelled') toast.success(resultShare === 'shared' ? 'Audit logs shared' : 'Audit logs downloaded for WhatsApp sharing')
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Audit logs could not be shared.') }
   }

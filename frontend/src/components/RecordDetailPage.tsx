@@ -5,8 +5,10 @@ import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
-import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportPaymentReceipt, exportDisbursementReceipt, exportLoanStatementCsv, exportLoanStatementPdf, sharePaymentReceipt, shareDisbursementReceipt, shareLoanStatementPdf, shareLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
+import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportDisbursementReceipt, exportLoanStatementCsv, exportLoanStatementPdf, shareBlob, shareDisbursementReceipt, shareLoanStatementPdf, shareLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
+import { generateReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
+import type { LoanAccount, PaymentMethod, Repayment } from '../lib/types'
 import type { RootState } from '../store/store'
 
 const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements' | 'branches'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
@@ -62,6 +64,8 @@ export function RecordDetailPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const role = useSelector((state: RootState) => state.session.role)
+  const branding = useSelector((state: RootState) => state.branding)
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
   const segment = location.pathname.split('/')[1] ?? ''
   const config = labels[segment]
   const [record, setRecord] = useState<Record<string, unknown> | null>(null)
