@@ -377,7 +377,7 @@ a { color: inherit; text-decoration: none; }
 .form-progress-summary { margin-bottom: 12px; }
 .borrower-profile-summary { align-items: flex-start; }
 .borrower-profile-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.borrower-profile-copy strong { color: #415671; font-size: 12px; font-weight: 650; line-height: 1.2; }
+.borrower-profile-copy strong { margin-top: 2px; color: #415671; font-size: 12px; font-weight: 650; line-height: 1.2; }
 .borrower-profile-copy small { color: #8c9bac; font-size: 10.75px; line-height: 1.35; }
 .borrower-profile-meta { display: block; margin-top: 2px; }
 .selected-customer-copy { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
