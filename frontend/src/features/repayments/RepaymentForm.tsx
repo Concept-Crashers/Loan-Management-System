@@ -67,9 +67,15 @@ export function RepaymentForm() {
       }
       const loanAccountId = (selectedLoan as any).id || values.loan
       const record = await api.recordRepayment({ loanAccountId, amount: values.amount, method: values.method, reference })
-      const ref = String((record as any)?.reference || (record as any)?._id || (record as any)?.id || '')
-      toast.success('Payment recorded', { description: `${formatUGX(values.amount)} via ${values.method}${ref ? ` · Ref: ${ref}` : ''}` })
+      const rec = record as any
+      const ref = String(rec?.reference || rec?.data?.reference || rec?._id || rec?.id || rec?.recordId || '')
+      const recordId = String(rec?._id || rec?.id || rec?.recordId || rec?.data?._id || rec?.data?.id || '')
+      toast.success('Payment recorded', { description: `${formatUGX(values.amount)} via ${values.method}${ref ? ` · Ref: ${ref}` : ''}. Confirm it on the next page.` })
       setRepayments((prev) => [record as any, ...prev])
+      if (recordId) {
+        navigate(`/repayments/${encodeURIComponent(recordId)}`)
+        return
+      }
       setValue('customerId', '')
       setValue('loan', '')
       setValue('amount', '' as any)
