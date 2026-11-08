@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, ClipboardList, Download, Ellipsis, ExternalLink, Eye, EyeOff, FilePenLine, FileSearch, FileText, HandCoins, KeyRound, List, Plus, Printer, RefreshCw, Replace, Save, Search, Send, ShieldAlert, SlidersHorizontal, StickyNote, Undo2, UserCheck, UserCog, UserMinus, UserPlus, Wallet, X, XCircle } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, ClipboardList, Download, Ellipsis, ExternalLink, Eye, EyeOff, FilePenLine, FileSearch, FileText, HandCoins, KeyRound, List, MessageCircle, Plus, Printer, RefreshCw, Replace, Save, Search, Send, ShieldAlert, SlidersHorizontal, StickyNote, Undo2, UserCheck, UserCog, UserMinus, UserPlus, Wallet, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { toast } from 'sonner'
@@ -9,6 +9,8 @@ import type { TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
 import { Avatar, Button, Card, Field, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
+import { shareBlob } from '../lib/api'
+import { exportReportExcel, type OrgInfo } from '../lib/exportDocs'
 import { Dialog, DialogContent } from './ui/dialog'
 import { PhoneNumberInput } from './ui/PhoneNumberInput'
 import { api } from '../lib/services'
@@ -52,18 +54,18 @@ function recordViewValue(key: string, value: unknown): string {
   return String(value)
 }
 
-function exportRows(rows: TableRow[], title: string) {
+async function exportRows(rows: TableRow[], title: string, org: OrgInfo) {
   if (!rows.length) { toast.info('There are no rows to export.'); return }
-  const headers = Object.keys(rows[0])
-  const safeCell = (value: unknown) => {
-    const text = String(value ?? '')
-    const protectedText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
-    return `"${protectedText.replaceAll('"', '""')}"`
-  }
-  const csv = [headers.map(safeCell).join(','), ...rows.map((row) => headers.map((key) => safeCell(row[key])).join(','))].join('\n')
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
-  const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}.csv`; anchor.click(); URL.revokeObjectURL(url)
+  await exportReportExcel({ reportLabel: title, reportKey: title.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-'), rows: rows as Record<string, unknown>[], fromDate: '', toDate: '', org })
   toast.success('Export downloaded')
+}
+
+async function shareRows(rows: TableRow[], title: string, org: OrgInfo) {
+  if (!rows.length) { toast.info('There are no rows to share.'); return }
+  const blob = await exportReportExcel({ reportLabel: title, reportKey: title.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-'), rows: rows as Record<string, unknown>[], fromDate: '', toDate: '', org, save: false })
+  if (!(blob instanceof Blob)) throw new Error('Export file could not be prepared.')
+  const r = await shareBlob(blob, `${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-')}.xlsx`, `${title} export`, `${title} export from ${org.companyName}.`)
+  if (r !== 'cancelled') toast.success(r === 'shared' ? 'Export shared' : 'Export downloaded for WhatsApp sharing')
 }
 
 function ScheduleCalendar({ rows, onOpen, month, setMonth }: { rows: TableRow[]; onOpen: (row: TableRow) => void; month: Date; setMonth: (value: Date) => void }) {
@@ -87,6 +89,8 @@ function ScheduleCalendar({ rows, onOpen, month, setMonth }: { rows: TableRow[];
 }
 
 export function OperationalPage({ definition, path }: { definition: PageDefinition; path: string }) {
+  const branding = useSelector((state: RootState) => state.branding)
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
   const [branchScope, setBranchScope] = useState('all')
@@ -377,7 +381,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
             <h2>{path === '/customers' ? 'All customers' : path === '/approvals' ? 'Review queue' : path === '/loans' ? 'Loan accounts' : path === '/collections' ? 'Follow-up queue' : `All ${definition.title.toLowerCase()}`}</h2>
             <p>{loading ? 'Loading records…' : `${filteredRows.length} record${filteredRows.length === 1 ? '' : 's'}`}</p>
           </div>
-          <Button variant="outline" size="sm" icon={Download} onClick={() => exportRows(filteredRows, definition.title)}>Export</Button>
+          <div className="heading-actions">
+            <Button variant="outline" size="sm" icon={Download} onClick={() => void exportRows(filteredRows, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>Export</Button>
+            <Button variant="outline" size="sm" icon={MessageCircle} onClick={() => void shareRows(filteredRows, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Share failed.'))}>Share via WhatsApp</Button>
+          </div>
         </div>
 
         <div className="table-toolbar">

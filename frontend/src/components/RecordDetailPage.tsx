@@ -5,8 +5,8 @@ import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
-import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportDisbursementReceipt, exportLoanStatementCsv, exportLoanStatementPdf, shareBlob, shareDisbursementReceipt, shareLoanStatementPdf, shareLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
-import { generateReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
+import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportLoanStatementCsv, shareBlob, shareLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
+import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
 import type { LoanAccount, PaymentMethod, Repayment } from '../lib/types'
 import type { RootState } from '../store/store'
@@ -87,6 +87,79 @@ export function RecordDetailPage() {
   const canViewSensitive = !['cashier', 'collectionsofficer'].includes(normalizedRole)
   const canAssessCredit = ['superadmin','admin','manager','approver','creditofficer','loanofficer'].includes(normalizedRole) || normalizedRole.includes('admin')
 
+  async function downloadReceiptPDF(save = true) {
+    if (!record) return
+    const amountMinor = Number(record.amountMinor ?? 0)
+    const repayment: Repayment = {
+      id: String(record._id ?? id),
+      customer: String((record as any).customerName ?? (record as any).customer ?? record.customerId ?? '—'),
+      customerId: String(record.customerId ?? ''),
+      loan: String(record.loanAccountId ?? record.loan ?? '—'),
+      amount: amountMinor ? amountMinor / 100 : Number(record.amount ?? 0),
+      method: (String(record.method ?? record.paymentMethod ?? 'Cash') as PaymentMethod),
+      reference: String(record.reference ?? '—'),
+      date: String(record.confirmedAt ?? record.createdAt ?? record.paymentDate ?? new Date().toISOString()),
+      receivedBy: String((record as any).receivedByName ?? record.confirmedBy ?? record.receivedBy ?? '—'),
+      status: String(record.status ?? '') === 'confirmed' ? 'Successful' : String(record.status ?? '') === 'reversed' ? 'Reversed' : 'Pending review',
+    }
+    const filename = `payment-receipt-${String(record.reference ?? record._id ?? id)}.pdf`
+    const blob = await generateReceiptPDF({ repayment, org, save, filename })
+    if (!save) return blob as Blob
+  }
+
+  async function downloadDisbursementReceiptPDF(save = true) {
+    if (!record) return
+    const amountMinor = Number(record.amountMinor ?? 0)
+    const disbursement = {
+      id: String(record._id ?? id),
+      reference: String(record.reference ?? ''),
+      customer: String((record as any).customerName ?? record.customerId ?? '—'),
+      loanRef: String(record.loanAccountId ?? '—'),
+      amount: amountMinor ? amountMinor / 100 : Number(record.amount ?? 0),
+      method: String(record.method ?? 'Cash'),
+      status: String(record.status ?? '—'),
+      authorizedAt: String(record.authorizedAt ?? record.createdAt ?? ''),
+      completedAt: String(record.completedAt ?? ''),
+    }
+    const filename = `disbursement-receipt-${String(record.reference ?? record._id ?? id)}.pdf`
+    const blob = await generateDisbursementReceiptPDF({ disbursement, org, save, filename })
+    if (!save) return blob as Blob
+  }
+
+  async function downloadStatementPDF(save = true) {
+    if (!record || !statement) throw new Error('Loan statement is not loaded yet.')
+    const loan: LoanAccount = {
+      ref: String(record.reference ?? record._id ?? id),
+      customer: String((record as any).customerName ?? record.customerId ?? '—'),
+      customerId: String(record.customerId ?? ''),
+      product: String((record as any).productName ?? record.loanProductId ?? 'Loan'),
+      principal: Number(record.principalMinor ?? 0) / 100,
+      disbursed: Number(((record as any).disbursedAmountMinor ?? record.principalMinor ?? 0)) / 100,
+      paid: Number((statement.summary as any)?.confirmedPaidMinor ?? 0) / 100,
+      outstanding: Number((statement.summary as any)?.paymentDueMinor ?? 0) / 100,
+      interest: Number((statement.summary as any)?.totalInterestMinor ?? 0) / 100,
+      start: String((record as any).disbursedAt ?? record.createdAt ?? ''),
+      maturity: String((record as any).maturityDate ?? ''),
+      status: String(record.status ?? 'Active') as LoanAccount['status'],
+      nextDue: String((statement as any).nextDueDate ?? ''),
+    }
+    const repayments: Repayment[] = (((statement.payments as any[]) || []).map((p) => ({
+      id: String(p._id ?? p.reference ?? ''),
+      customer: loan.customer,
+      customerId: loan.customerId,
+      loan: loan.ref,
+      amount: Number(p.amountMinor ?? 0) / 100,
+      method: String(p.method ?? 'Cash') as PaymentMethod,
+      reference: String(p.reference ?? '—'),
+      date: String(p.createdAt ?? ''),
+      receivedBy: '—',
+      status: p.status === 'confirmed' ? 'Successful' : p.status === 'reversed' ? 'Reversed' : 'Pending review',
+    })))
+    const filename = `loan-statement-${loan.ref}.pdf`
+    const blob = await generateLoanStatementPDF({ loan, repayments, org, save, filename })
+    if (!save) return blob as Blob
+  }
+
   async function load() {
     if (!config) return
     setLoading(true)
@@ -166,19 +239,17 @@ export function RecordDetailPage() {
           <Button variant="danger" onClick={() => setAction({ title: 'Cancel application', desc: 'Cancellation is an administrative stop. This action is irreversible and audited.', label: 'Cancel application', danger: true, run: async (reason) => { await api.cancelApplication(String(record._id ?? id), reason, Number(record.version ?? 1)); toast.success('Application cancelled'); await load() } })}>Cancel</Button>
         </> : null}
         {segment === 'repayments' && String(record?.status ?? '') === 'pending_verification' ? <Button loading={confirmingPayment} disabled={confirmingPayment} onClick={async () => { if (confirmingPayment) return; setConfirmingPayment(true); try { await api.confirmRepayment(String(record?._id ?? id)); toast.success('Repayment confirmed'); await load() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed. Check repayments.confirm permission.') } finally { setConfirmingPayment(false) } }}>Confirm payment</Button> : null}
-        {segment === 'repayments' ? <Button variant="outline" onClick={async () => { try { await exportPaymentReceipt(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be opened.') } }}>Receipt</Button> : null}
-        {segment === 'repayments' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const r = await sharePaymentReceipt(String(record?._id ?? id)); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Receipt shared' : 'Receipt opened for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be shared.') } }}>Share via WhatsApp</Button> : null}
+        {segment === 'repayments' ? <Button variant="outline" onClick={async () => { try { await downloadReceiptPDF(true); toast.success('Receipt PDF downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt PDF could not be generated.') } }}>Receipt PDF</Button> : null}
+        {segment === 'repayments' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadReceiptPDF(false); if (!(blob instanceof Blob)) throw new Error('Receipt could not be prepared.'); const r = await shareBlob(blob, `payment-receipt-${String(record?.reference ?? id)}.pdf`, 'Payment receipt', `Payment receipt ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Receipt shared' : 'Receipt downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be shared.') } }}>Share via WhatsApp</Button> : null}
         {segment === 'repayments' && String(record?.status ?? '') === 'confirmed' ? <Button variant="danger" onClick={() => setAction({ title: 'Reverse repayment', desc: 'Reversal posts accounting reversal entries and is irreversible. Provide a clear audit reason.', label: 'Reverse payment', danger: true, run: async (reason) => { await api.reverseRepayment(String(record?._id ?? id), reason); toast.success('Repayment reversed'); await load() } })}>Reverse payment</Button> : null}
         {segment === 'loans' && String(record?.status ?? '') === 'pending_disbursement' ? <Button onClick={() => navigate(`/disbursements/new?mode=authorize&loan=${encodeURIComponent(String(record?._id ?? id))}`)}>Authorize disbursement</Button> : null}
-        {segment === 'disbursements' ? <Button variant="outline" onClick={async () => { try { await exportDisbursementReceipt(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be opened.') } }}>Disbursement receipt</Button> : null}
-        {segment === 'disbursements' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const r = await shareDisbursementReceipt(String(record?._id ?? id)); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Receipt shared' : 'Receipt opened for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be shared.') } }}>Share via WhatsApp</Button> : null}
+        {segment === 'disbursements' ? <Button variant="outline" onClick={async () => { try { await downloadDisbursementReceiptPDF(true); toast.success('Disbursement receipt downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Disbursement receipt could not be generated.') } }}>Disbursement receipt</Button> : null}
+        {segment === 'disbursements' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadDisbursementReceiptPDF(false); if (!(blob instanceof Blob)) throw new Error('Receipt could not be prepared.'); const r = await shareBlob(blob, `disbursement-receipt-${String(record?.reference ?? id)}.pdf`, 'Disbursement receipt', `Disbursement receipt ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Receipt shared' : 'Receipt downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be shared.') } }}>Share via WhatsApp</Button> : null}
         {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await exportLoanStatementCsv(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement export failed.') } }}>Statement CSV</Button> : null}
         {segment === 'loans' ? <Button variant="outline" icon={Share2} onClick={async () => { try { const r = await shareLoanStatementCsv(String(record?._id ?? id)); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share CSV</Button> : null}
-        {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await exportLoanStatementPdf(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement PDF could not be opened.') } }}>Statement PDF</Button> : null}
-        {segment === 'loans' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const r = await shareLoanStatementPdf(String(record?._id ?? id)); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement opened for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share via WhatsApp</Button> : null}
-        {segment !== 'loans' ? <Button variant="outline" icon={Download} onClick={() => {
-          const rows = [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))]; const headers = Object.keys(rows[0] ?? {}); const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => `"${String((r as any)[h] ?? '').replaceAll('"','""')}"`).join(','))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `${segment}-${String(record?._id ?? id)}.csv`; a.click(); URL.revokeObjectURL(a.href)
-        }}>Export</Button> : null}
+        {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await downloadStatementPDF(true); toast.success('Statement PDF downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement PDF could not be generated.') } }}>Statement PDF</Button> : null}
+        {segment === 'loans' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadStatementPDF(false); if (!(blob instanceof Blob)) throw new Error('Statement could not be prepared.'); const r = await shareBlob(blob, `loan-statement-${String(record?.reference ?? id)}.pdf`, 'Loan statement', `Loan statement ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share via WhatsApp</Button> : null}
+        {segment !== 'loans' ? <Button variant="outline" icon={Download} onClick={() => void exportReportExcel({ reportLabel: `${config.title} record`, reportKey: `${segment}-${String(record?._id ?? id)}`, rows: [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))], fromDate: '', toDate: '', org }).then(() => toast.success('Export downloaded')).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>Export</Button> : null}
         <Button variant="outline" onClick={() => window.print()}>Print / receipt</Button>
       </div>
     </div>

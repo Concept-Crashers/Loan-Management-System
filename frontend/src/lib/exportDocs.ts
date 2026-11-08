@@ -600,6 +600,49 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   doc.save(outName)
 }
 
+export interface DisbursementReceiptData {
+  disbursement: { id: string; reference?: string; customer: string; loanRef: string; amount: number; method: string; status: string; authorizedAt?: string; completedAt?: string }
+  org: OrgInfo
+  save?: boolean
+  filename?: string
+}
+
+export async function generateDisbursementReceiptPDF(data: DisbursementReceiptData): Promise<Blob | void> {
+  const { default: jsPDF } = await import('jspdf')
+  const { default: autoTable } = await import('jspdf-autotable')
+  const { disbursement, org, save = true, filename } = data
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W = doc.internal.pageSize.getWidth()
+  const H = doc.internal.pageSize.getHeight()
+  const receiptNo = docNumber('DSB')
+  const now = new Date()
+  const outName = filename || `disbursement-${receiptNo}.pdf`
+  doc.setFillColor(...NAVY); doc.rect(0, 0, W, 32, 'F')
+  doc.setDrawColor(255,255,255); doc.roundedRect(10,7,18,18,2,2,'S')
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...WHITE)
+  const initials = org.companyName.split(/\s+/).map((p)=>p[0]).join('').slice(0,2).toUpperCase()
+  doc.text(initials,19,18,{align:'center'})
+  doc.setFontSize(14); doc.text(org.companyName.toUpperCase(),32,13)
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180,210,245)
+  doc.text(`${org.tagline||'LOAN OPERATIONS'} · ${org.country}`,32,19)
+  doc.setFillColor(...GOLD); doc.rect(0,32,W,1.2,'F')
+  let y=42
+  doc.setFillColor(...NAVY); doc.roundedRect(10,y,W-20,16,3,3,'F')
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...WHITE)
+  doc.text('OFFICIAL DISBURSEMENT RECEIPT',W/2,y+7,{align:'center'})
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180,210,245)
+  doc.text(`Receipt No: ${receiptNo}`,W/2,y+13,{align:'center'})
+  y+=24
+  autoTable(doc, { head: [['Field','Value']], body: [['Customer',disbursement.customer],['Loan Account',disbursement.loanRef],['Reference',disbursement.reference||disbursement.id],['Method',disbursement.method],['Status',disbursement.status],['Authorized',disbursement.authorizedAt?fmtDate(disbursement.authorizedAt):'—'],['Completed',disbursement.completedAt?fmtDate(disbursement.completedAt):'—']], startY:y, theme:'grid', headStyles:{fillColor:NAVY,textColor:WHITE}, margin:{left:20,right:20}, tableLineColor:BORDER })
+  y=((doc as any).lastAutoTable?.finalY??y+30)+8
+  doc.setFillColor(240,247,255); doc.setDrawColor(...NAVY_LIGHT); doc.roundedRect(20,y,W-40,24,4,4,'FD')
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY_LIGHT); doc.text('AMOUNT RELEASED',W/2,y+8,{align:'center'})
+  doc.setFontSize(20); doc.setTextColor(...NAVY); doc.text(fmtUGX(disbursement.amount||0),W/2,y+18,{align:'center'})
+  doc.setFillColor(...NAVY); doc.rect(0,H-10,W,10,'F'); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...WHITE); doc.text(`${org.companyName} · Loan Management System · Generated: ${fmtDateTime(now)}`,W/2,H-4,{align:'center'})
+  if (!save) return doc.output('blob') as Blob
+  doc.save(outName)
+}
+
 // ─── D. generateLoanStatementPDF ─────────────────────────────────────────────
 
 export interface LoanStatementData {
