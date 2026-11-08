@@ -242,6 +242,83 @@ export function calculateCreditScore(input: { applicationId?: string; customerId
   return apiRequest<CreditAssessment>('/api/v1/credit-assessments/calculate', { method: 'POST', body: JSON.stringify(input) })
 }
 
+export type ShareResult = 'shared' | 'downloaded' | 'opened' | 'cancelled' | 'fallback'
+
+export async function shareBlob(blob: Blob, filename: string, title: string, text?: string): Promise<ShareResult> {
+  const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' })
+  const shareText = text || title
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title, text: shareText })
+      return 'shared'
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+  }
+  triggerBlobDownload(blob, filename)
+  openWhatsAppShare([shareText, `The file (${filename}) was downloaded. Attach it in WhatsApp to send it.`].filter(Boolean).join('\n'))
+  return 'fallback'
+}
+
+async function fetchAuthenticatedBlob(path: string): Promise<{ blob: Blob; contentType: string; filename?: string }> {
+  const headers: Record<string, string> = {}
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  const res = await fetch(path, { credentials: 'include', headers })
+  if (!res.ok) throw new Error(`Document could not be prepared (${res.status})`)
+  const contentType = res.headers.get('content-type') || 'application/octet-stream'
+  const disposition = res.headers.get('content-disposition') || ''
+  const filename = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";\n]+)/i)?.[1]
+  const blob = await res.blob()
+  return { blob, contentType, filename: filename ? decodeURIComponent(filename) : undefined }
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function openWhatsAppShare(text: string) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
+}
+
+export async function shareDocument(options: { path: string; filename: string; title: string; text?: string; openIfHtml?: boolean }): Promise<ShareResult> {
+  const { path, filename, title, text, openIfHtml = true } = options
+  const { blob, contentType } = await fetchAuthenticatedBlob(path)
+  if (openIfHtml && contentType.includes('text/html')) {
+    const html = await blob.text()
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close() }
+    const shareText = [title, text, 'Open the document and use Print / Save as PDF, then attach it in WhatsApp.'].filter(Boolean).join('\n')
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text: shareText })
+        return 'shared'
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+    }
+    openWhatsAppShare(shareText)
+    return 'opened'
+  }
+  const file = new File([blob], filename, { type: blob.type || contentType || 'application/octet-stream' })
+  const shareText = text || title
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share({ files: [file], title, text: shareText })
+      return 'shared'
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+  }
+  triggerBlobDownload(blob, filename)
+  openWhatsAppShare([shareText, 'The document was downloaded. Attach it in WhatsApp to send it.'].filter(Boolean).join('\n'))
+  return 'fallback'
+}
+
 export async function downloadAuthenticated(path: string, filename?: string) {
   const headers: Record<string, string> = {}
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`
@@ -266,6 +343,10 @@ export function exportDisbursementReceipt(id: string) { return downloadAuthentic
 export function exportPaymentReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`) }
 export function exportLoanStatementCsv(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, `loan-statement-${id}.csv`) }
 export function exportLoanStatementPdf(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/pdf`) }
+export function shareDisbursementReceipt(id: string) { return shareDocument({ path: `/api/v1/finance/disbursements/${encodeURIComponent(id)}/receipt`, filename: `disbursement-receipt-${id}.html`, title: `Disbursement receipt ${id}`, text: `Disbursement receipt ${id} from Trust Loans.` }) }
+export function sharePaymentReceipt(id: string) { return shareDocument({ path: `/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`, filename: `payment-receipt-${id}.html`, title: `Payment receipt ${id}`, text: `Payment receipt ${id} from Trust Loans.` }) }
+export function shareLoanStatementPdf(id: string) { return shareDocument({ path: `/api/v1/finance/loans/${encodeURIComponent(id)}/statement/pdf`, filename: `loan-statement-${id}.html`, title: `Loan statement ${id}`, text: `Loan statement ${id} from Trust Loans. Use Print / Save as PDF, then attach the PDF.` }) }
+export function shareLoanStatementCsv(id: string) { return shareDocument({ path: `/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, filename: `loan-statement-${id}.csv`, title: `Loan statement ${id} (CSV)`, text: `Loan statement ${id} (CSV) from Trust Loans.` }) }
 
 export async function uploadToCloudinary(signature: { cloudName: string; apiKey: string; timestamp: number; folder: string; type: string; signature: string }, file: File) {
   const fd = new FormData()

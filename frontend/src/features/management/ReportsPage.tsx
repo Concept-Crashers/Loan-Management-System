@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowDownToLine, ArrowRight, Banknote, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, FileBarChart2, Printer, Users, WalletCards } from 'lucide-react'
+import { useSelector } from 'react-redux'
+import { Activity, ArrowDownToLine, ArrowRight, Banknote, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, FileBarChart2, MessageCircle, Printer, Users, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, Card, Input, Select } from '../../components/ui/primitives'
+import { shareBlob } from '../../lib/api'
 import { api } from '../../lib/services'
 import { formatUGX } from '../../lib/format'
 import type { Application, CollectionRecord, Customer, LoanAccount, Repayment, Transaction } from '../../lib/types'
+import { exportReportPDF, exportReportExcel } from '../../lib/exportDocs'
+import type { RootState } from '../../store/store'
 
 
 export function ReportsPage() {
+  const branding = useSelector((state: RootState) => state.branding)
   const [loans, setLoans] = useState<LoanAccount[]>([])
   const [repayments, setRepayments] = useState<Repayment[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -26,6 +31,7 @@ export function ReportsPage() {
   })
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [exporting, setExporting] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -188,6 +194,24 @@ export function ReportsPage() {
       setExporting(false)
     }
   }
+  async function shareExcel() {
+    if (!rows.length) { toast.info('There are no rows to share for the selected filters.'); return }
+    setSharing(true)
+    try {
+      const XLSX = await import('xlsx')
+      const workbook = XLSX.utils.book_new()
+      const sheet = XLSX.utils.json_to_sheet(rows)
+      XLSX.utils.book_append_sheet(workbook, sheet, report.label.slice(0, 31))
+      const out = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const result = await shareBlob(blob, `${report.key}-report.xlsx`, `${report.label} report`, `${report.label} report export from Trust Loans.`)
+      if (result !== 'cancelled') toast.success(result === 'shared' ? 'Report shared' : 'Report downloaded for WhatsApp sharing')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Share failed.')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <div className="reports-page">
@@ -199,7 +223,8 @@ export function ReportsPage() {
         </div>
         <div className="heading-actions">
           <button className="button-print" onClick={() => window.print()}><Printer size={15} /> Print / PDF</button>
-          <Button loading={exporting} icon={ArrowDownToLine} onClick={() => void downloadExcel()}>Export Excel</Button>
+          <Button loading={exporting} disabled={sharing} icon={ArrowDownToLine} onClick={() => void downloadExcel()}>Export Excel</Button>
+          <Button variant="outline" loading={sharing} disabled={exporting} icon={MessageCircle} onClick={() => void shareExcel()}>Share via WhatsApp</Button>
         </div>
       </div>
 
@@ -282,8 +307,11 @@ export function ReportsPage() {
             <h2>{report.label}</h2>
             <p>{report.description}</p>
           </div>
-          <button className="text-link" disabled={exporting || rows.length === 0} onClick={() => void downloadExcel()}>
+          <button className="text-link" disabled={exporting || sharing || rows.length === 0} onClick={() => void downloadExcel()}>
             {exporting ? 'Preparing…' : 'Download .xlsx'} <ArrowRight size={14} />
+          </button>
+          <button className="text-link" disabled={exporting || sharing || rows.length === 0} onClick={() => void shareExcel()}>
+            {sharing ? 'Preparing…' : 'Share via WhatsApp'}
           </button>
         </div>
         <div className="report-preview-table">
