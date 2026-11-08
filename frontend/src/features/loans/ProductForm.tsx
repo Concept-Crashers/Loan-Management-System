@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import { ArrowLeft, Info, Save, X } from 'lucide-react'
+import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
@@ -38,8 +38,6 @@ export function ProductForm() {
     defaultValues: { code: '', name: '', description: '', minAmount: 100000, maxAmount: 5000000, interestRate: 20, interestBasis: 'term', interestMethod: 'Flat rate', duration: 1, frequency: 'Monthly', gracePeriod: 0, fees: '', lateRule: '', documents: '', status: 'draft' },
   })
   const status = watch('status')
-  const basis = watch('interestBasis')
-  const rate = watch('interestRate')
 
   useEffect(() => {
     if (!id) return
