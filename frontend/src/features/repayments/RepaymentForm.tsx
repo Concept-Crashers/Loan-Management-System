@@ -6,10 +6,12 @@ import { ArrowLeft, Banknote, Info, ReceiptText, ShieldCheck, X } from 'lucide-r
 import { Link, useNavigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import { toast } from 'sonner'
+import { useSelector } from 'react-redux'
 import { Button, Card, Field, Input, Select, Textarea } from '../../components/ui/primitives'
 import type { Customer, LoanAccount, Repayment } from '../../lib/types'
 import { formatUGX } from '../../lib/format'
 import { api } from '../../lib/services'
+import type { RootState } from '../../store/store'
 
 const schema = z.object({
   customerId: z.string().min(1, 'Choose a customer.'),
@@ -28,6 +30,7 @@ const CASH_REF = () => `CASH-RCT-${Date.now().toString(36).toUpperCase()}-${Math
 
 export function RepaymentForm() {
   const navigate = useNavigate()
+  const branding = useSelector((s: RootState) => s.branding)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loans, setLoans] = useState<LoanAccount[]>([])
   const [repayments, setRepayments] = useState<Repayment[]>([])
@@ -84,7 +87,7 @@ export function RepaymentForm() {
             <Field label="Notes" className="field-span-2"><Textarea rows={3} placeholder="Optional notes for the receipt and audit record" {...register('notes')} /></Field>
           </div><div className="terms-disclaimer"><ShieldCheck size={17} /><span>The backend validates authorization, payment allocation, and the resulting balance. Cash receipts receive a system-generated reference.</span></div></div></Card>
       <Card className="payment-allocation-card"><div className="payment-allocation-header"><span><Banknote size={17} /></span><div><h2>Payment allocation</h2><p>Illustrative preview only · authoritative allocation and receipt reference come from the lending service. Supports daily partial collections.</p></div></div><div className="allocation-line"><span>Principal</span><strong>Calculated by API</strong></div><div className="allocation-line"><span>Interest</span><strong>Calculated by API</strong></div><div className="allocation-line"><span>Permitted fees</span><strong>Calculated by API</strong></div><div className="allocation-total"><span>Amount entered</span><strong>{formatUGX(Number.isFinite(amount) ? amount : 0)}</strong></div></Card>
-      </div><aside className="repayment-side"><Card className="receipt-preview"><div className="receipt-preview-head"><span className="receipt-icon"><ReceiptText size={18} /></span><div><h2>Receipt preview</h2><p>Available after recording</p></div></div><div className="receipt-skeleton"><div className="receipt-demo-brand">Trust Loans <span>PAYMENT RECEIPT</span></div><div className="receipt-divider" /><span className="receipt-placeholder-label">Customer</span><div className="receipt-placeholder-line" /><span className="receipt-placeholder-label">Amount</span><div className="receipt-amount-placeholder">{formatUGX(Number.isFinite(amount) ? amount : 0)}</div><span className="receipt-placeholder-label">Transaction ref</span><div className="receipt-placeholder-line short" /><div className="receipt-stamp">PREVIEW</div></div><div className="receipt-note"><Info size={14} />Receipt numbers and financial records are issued by the backend in production.</div></Card><div className="privacy-inline repayment-privacy"><ShieldCheck size={15} /><span>Handle customer payment data only through authorized staff and approved channels.</span></div></aside>
+      </div><aside className="repayment-side"><Card className="receipt-preview"><div className="receipt-preview-head"><span className="receipt-icon"><ReceiptText size={18} /></span><div><h2>Receipt preview</h2><p>Branded receipt issued after recording</p></div></div><div className="receipt-skeleton receipt-skeleton-branded"><div className="receipt-demo-brand"><span className="receipt-demo-org"><span className="receipt-demo-logo" aria-hidden>{(branding.companyName || 'Trust Loans').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase()}</span><strong>{branding.companyName || 'Trust Loans'}</strong></span><span className="receipt-demo-pill">PAYMENT RECEIPT</span></div><div className="receipt-hero-preview"><span className="receipt-placeholder-label">Amount received</span><div className="receipt-amount-placeholder">{branding.currency || 'UGX'} {new Intl.NumberFormat('en-UG', { maximumFractionDigits: 0 }).format(Number.isFinite(amount) ? amount : 0)}</div></div><div className="receipt-preview-grid"><div><span className="receipt-placeholder-label">Customer</span><div className="receipt-placeholder-line" /></div><div><span className="receipt-placeholder-label">Loan account</span><div className="receipt-placeholder-line short" /></div><div><span className="receipt-placeholder-label">Method</span><div className="receipt-placeholder-line short" /></div><div><span className="receipt-placeholder-label">Reference</span><div className="receipt-placeholder-line" /></div></div><div className="receipt-stamp">PREVIEW</div></div><div className="receipt-note"><Info size={14} />Receipt reference, allocation, and financial records are issued by the backend using your system branding.</div></Card><div className="privacy-inline repayment-privacy"><ShieldCheck size={15} /><span>Handle customer payment data only through authorized staff and approved channels.</span></div></aside>
       <div className="form-footer"><span>Payment remains pending until server confirmation.</span><div><Button type="button" variant="outline" icon={X} onClick={() => navigate('/repayments')}>Cancel</Button><Button type="submit" icon={ReceiptText} loading={isSubmitting}>Record payment</Button></div></div>
     </form>
   </div>
