@@ -89,6 +89,8 @@ function ScheduleCalendar({ rows, onOpen, month, setMonth }: { rows: TableRow[];
 export function OperationalPage({ definition, path }: { definition: PageDefinition; path: string }) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
+  const [branchScope, setBranchScope] = useState('all')
+  const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string }>>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selected, setSelected] = useState<TableRow | null>(null)
@@ -112,7 +114,6 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', phone: '', roles: 'loan_officer', branchIds: [] as string[] })
   const [staffSaving, setStaffSaving] = useState(false)
   const [staffShowPassword, setStaffShowPassword] = useState(false)
-  const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string }>>([])
   const [editStaff, setEditStaff] = useState<TableRow | null>(null)
   const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer', branchIds: [] as string[] })
   const [editStaffSaving, setEditStaffSaving] = useState(false)
@@ -130,7 +131,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const role = useSelector((state: RootState) => state.session.role)
   const roles = useSelector((state: RootState) => state.session.user?.roles ?? [])
   const permissions = useSelector((state: RootState) => state.session.user?.permissions ?? [])
-  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
+  const isSuperAdmin = roles.some((r) => ['super_admin','super-admin','superadmin','admin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_'))) || permissions.includes('*')
   const canReview = isSuperAdmin || permissions.includes('*') || ['Admin', 'Manager', 'Approver'].includes(role) || permissions.includes('loans.applications.approve')
   const canManageLoans = isSuperAdmin || permissions.includes('*') || permissions.includes('loans.accounts.manage')
   const canReverseRepayments = isSuperAdmin || permissions.includes('*') || permissions.includes('repayments.reverse')
@@ -144,8 +145,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     setLoadError(null)
     try {
       if (path === '/customers') {
-        const rows = await api.listCustomers()
-        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })))
+        if (isSuperAdmin && !branchOptions.length) api.listBranches().then((b) => setBranchOptions((b||[]).map((x:any)=>({id:String(x.branchId||x.id||''),name:String(x.name||x.branchId||x.id||'')})).filter((x)=>x.id))).catch(()=>{})
+        const rows = await api.listCustomers(isSuperAdmin && branchScope !== 'all' ? { branchId: branchScope } : undefined)
+        const bmap = new Map(branchOptions.map((b) => [b.id, b.name]))
+        setRemoteRows(rows.map((item:any) => ({ id: item.id, name: item.name, branch: bmap.get(String(item.branchId||'')) || String(item.branchId||'—'), phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })))
       } else if (path === '/products') {
         const rows = await api.listProducts()
         setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, range: `${formatUGX(item.minAmount)} – ${formatUGX(item.maxAmount)}`, rate: item.rateLabel || `${item.interestRate}% ${(item as any).interestBasis === 'term' ? 'per term' : (item as any).interestBasis === 'monthly' ? 'per month' : 'p.a.'}`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })))
@@ -203,7 +206,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   useEffect(() => {
     void loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path])
+  }, [path, branchScope])
 
   useEffect(() => {
     if (!branchModal && !editBranch && !staffModal && !editStaff) return
@@ -383,6 +386,12 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
             <Input placeholder={`Search ${definition.title.toLowerCase()}...`} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} aria-label={`Search ${definition.title}`} />
           </div>
           <div className="table-tools">
+            {path === '/customers' && isSuperAdmin && (
+              <Select value={branchScope} onChange={(event) => { setBranchScope(event.target.value); setPage(1) }} aria-label="Filter by branch">
+                <option value="all">All branches</option>
+                {branchOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </Select>
+            )}
             {filterKey && (
               <Select value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1) }} aria-label={definition.filterLabel ?? 'Filter records'}>
                 <option value="All">{definition.filterLabel ? `All ${definition.filterLabel.toLowerCase()}s` : 'All statuses'}</option>
@@ -566,7 +575,7 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
                           <span><Search size={21} /></span>
                           <strong>No records found</strong>
                           <p>{search ? 'Try adjusting your search criteria.' : 'No data recorded in the database yet.'}</p>
-                          {search && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilter('All') }}>Clear search</Button>}
+                          {search && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilter('All'); setBranchScope('all') }}>Clear search</Button>}
                         </div>
                       </td>
                     </tr>

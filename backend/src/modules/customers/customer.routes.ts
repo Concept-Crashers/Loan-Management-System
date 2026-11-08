@@ -37,7 +37,7 @@ router.get('/', requirePermission('customers.view'), asyncRoute(async (request: 
   if (!('branchId' in scope) && query.branchId) scope.branchId = query.branchId
   // Non-overall users must have at least one accessible branch scope unless a specific allowed branch was requested.
   const roles = (user.roles ?? []).map((r) => String(r).toLowerCase().replace(/[\s-]+/g, '_'))
-  const overall = roles.some((r) => r === 'super_admin' || r === 'superadmin')
+  const overall = roles.some((r) => r === 'super_admin' || r === 'superadmin' || r === 'admin')
   if (!overall && !query.branchId && !user.branchIds?.length) throw new HttpError(403, 'NO_BRANCH', 'No branch is assigned to this user. Ask an administrator to assign a branch in Staff management.')
   const filter = { tenantId: user.tenantId, ...scope, ...(query.search ? { $or: [{ name: new RegExp(query.search, 'i') }, { phone: new RegExp(query.search, 'i') }, { customerNumber: new RegExp(query.search, 'i') }] } : {}) }
   const [data, total] = await Promise.all([CustomerModel.find(filter).select('-nationalId').sort({ createdAt: -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(), CustomerModel.countDocuments(filter)])

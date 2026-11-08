@@ -29,6 +29,7 @@ export const pageRegistry: Record<string, PageDefinition> = {
     columns: [
       { label: 'Customer', key: 'name', format: 'person' },
       { label: 'Customer ID', key: 'id', format: 'mono' },
+      { label: 'Branch', key: 'branch' },
       { label: 'Telephone', key: 'phone' },
       { label: 'District', key: 'district' },
       { label: 'Loans', key: 'loans' },

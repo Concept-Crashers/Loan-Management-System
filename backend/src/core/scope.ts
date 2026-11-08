@@ -9,7 +9,7 @@ export function currentUser(request: AuthRequest) {
 }
 
 export function isOverallAdmin(request: AuthRequest) {
-  return (currentUser(request).roles ?? []).some((r) => ['super_admin', 'superadmin'].includes(normalizeRoleName(r)))
+  return (currentUser(request).roles ?? []).some((r) => ['super_admin', 'superadmin', 'admin'].includes(normalizeRoleName(r)))
 }
 
 export function tenantFilter(request: AuthRequest, response?: Response) {

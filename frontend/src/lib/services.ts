@@ -119,14 +119,17 @@ function mapProduct(record: BackendProduct): LoanProduct {
 }
 
 export const api = {
-  listCustomers: async (): Promise<Customer[]> => {
-    const bId = branchId()
+  listCustomers: async (options?: { branchId?: string }): Promise<Customer[]> => {
+    const current = getAuthenticatedUser() as any
+    const roles = (current?.roles ?? []).map((r: unknown) => String(r).toLowerCase().replace(/[\s-]+/g, '_'))
+    const isOverall = roles.some((r: string) => ['super_admin', 'superadmin', 'admin'].includes(r)) || (current?.permissions ?? []).includes('*')
+    const bId = options?.branchId || (isOverall ? '' : branchId())
     const path = bId ? `/api/v1/customers?branchId=${encodeURIComponent(bId)}` : '/api/v1/customers'
     const response = await apiRequest<BackendCustomer[] | { data: BackendCustomer[] }>(path)
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => {
       const mapped = mapCustomer(record)
-      return { ...mapped, recordId: mapped.recordId || String((record as any)._id ?? (record as any).id ?? mapped.id) }
+      return { ...mapped, branchId: String((record as any).branchId ?? ''), recordId: mapped.recordId || String((record as any)._id ?? (record as any).id ?? mapped.id) }
     })
   },
 
