@@ -11,6 +11,7 @@ import { api } from '../../lib/services'
 import { PhoneNumberInput } from '../../components/ui/PhoneNumberInput'
 
 const schema = z.object({
+  branchId: z.string().min(1, 'Select the branch for this customer.'),
   name: z.string().min(3, 'Enter the borrower’s full name.'),
   dateOfBirth: z.string().min(1, 'Date of birth is required.'),
   phone: z.string().regex(/^(\+\d{1,4}[\s-]?\d[\d\s-]{5,13}|0\d{9})$/, 'Enter a valid phone number (select country code).'),
@@ -39,7 +40,7 @@ const idTypeOptions = ['National ID (NIN)', 'Passport', 'Driving permit', 'Other
 const steps = [
   { title: 'Personal', caption: 'Identity details' },
   { title: 'Contact', caption: 'Reachability' },
-  { title: 'Location', caption: 'Service area' },
+  { title: 'Location', caption: 'Branch & service area' },
   { title: 'Identification', caption: 'ID reference' },
   { title: 'Employment', caption: 'Income details' },
   { title: 'Next of kin', caption: 'Documents & contact' },
@@ -47,7 +48,7 @@ const steps = [
 const stepFields: (keyof FormInput)[][] = [
   ['name', 'dateOfBirth'],
   ['phone', 'email', 'address'],
-  ['district', 'town'],
+  ['branchId', 'district', 'town'],
   ['idType', 'nationalId'],
   ['occupation', 'employer', 'monthlyIncome'],
   ['nextOfKin', 'nextOfKinRelationship', 'nextOfKinPhone'],
@@ -61,7 +62,12 @@ export function CustomerForm({ mode = 'create' }: { mode?: 'create' | 'edit' }) 
   const [documents, setDocuments] = useState<string[]>([])
   const [loading, setLoading] = useState(isEdit)
   const [version, setVersion] = useState<number | null>(null)
-  const { register, control, handleSubmit, reset, trigger, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { name: '', dateOfBirth: '', phone: '+256 ', email: '', address: '', district: '', town: '', idType: 'National ID (NIN)', nationalId: '', occupation: '', employer: '', monthlyIncome: 0, nextOfKin: '', nextOfKinRelationship: '', nextOfKinPhone: '+256 ' } })
+  const [branchOptions, setBranchOptions] = useState<Array<{ value: string; label: string }>>([])
+  const { register, control, handleSubmit, reset, trigger, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { branchId: '', name: '', dateOfBirth: '', phone: '+256 ', email: '', address: '', district: '', town: '', idType: 'National ID (NIN)', nationalId: '', occupation: '', employer: '', monthlyIncome: 0, nextOfKin: '', nextOfKinRelationship: '', nextOfKinPhone: '+256 ' } })
+
+  useEffect(() => {
+    api.listBranches().then((rows) => setBranchOptions((rows ?? []).map((b: any) => ({ value: String(b.branchId ?? b.id ?? ''), label: `${b.name}${b.district ? ` · ${b.district}` : ''}` })).filter((o) => o.value))).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!isEdit) return
@@ -71,6 +77,7 @@ export function CustomerForm({ mode = 'create' }: { mode?: 'create' | 'edit' }) 
         setVersion(typeof r.version === 'number' ? r.version : null)
         const dob = r.dateOfBirth ? new Date(r.dateOfBirth).toISOString().slice(0, 10) : ''
         reset({
+          branchId: String(r.branchId ?? ''),
           name: r.name ?? '', dateOfBirth: dob, phone: r.phone ?? '+256 ', email: r.email ?? '',
           address: r.address ?? '', district: r.district ?? '', town: r.town ?? r.municipality ?? '',
           idType: r.idType ?? 'National ID (NIN)', nationalId: r.nationalId ?? '',
@@ -111,7 +118,7 @@ export function CustomerForm({ mode = 'create' }: { mode?: 'create' | 'edit' }) 
       <form onSubmit={handleSubmit(submit)} className="wizard-content">
         {step === 0 && <Section number="01" title="Personal details" description="The borrower’s legal name and basic information."><div className="form-grid"><Field label="Full name" required error={errors.name?.message}><Input placeholder="e.g. Anita Namusoke" {...register('name')} /></Field><Field label="Date of birth" required error={errors.dateOfBirth?.message}><Input type="date" {...register('dateOfBirth')} /></Field></div></Section>}
         {step === 1 && <Section number="02" title="Contact details" description="How your team can reach the borrower."><div className="form-grid"><Field label="Mobile phone" required hint="Select country code (e.g. +256) to avoid retyping." error={errors.phone?.message}><Controller name="phone" control={control} render={({ field }) => <PhoneNumberInput value={field.value} onChange={field.onChange} />} /></Field><Field label="Email address" error={errors.email?.message}><Input type="email" placeholder="borrower@example.com" {...register('email')} /></Field><Field label="Physical address" required className="field-span-2" error={errors.address?.message}><Input placeholder="Street, parish or local landmark" {...register('address')} /></Field></div></Section>}
-        {step === 2 && <Section number="03" title="Location" description="Branch and service-area context for this borrower."><div className="form-grid"><Field label="District" required error={errors.district?.message}><Controller name="district" control={control} render={({ field }) => <SearchableSelect options={districtOptions} value={field.value} onChange={field.onChange} placeholder="Search and select district" />} /></Field><Field label="Town / municipality" required error={errors.town?.message}><Input placeholder="e.g. Ntinda" {...register('town')} /></Field></div></Section>}
+        {step === 2 && <Section number="03" title="Location & branch" description="Assign the borrower to a branch the staff member can access."><div className="form-grid"><Field label="Branch" required error={errors.branchId?.message} hint="The manager/staff must be assigned to this branch in Staff & Users."><Controller name="branchId" control={control} render={({ field }) => <SearchableSelect options={branchOptions} value={field.value} onChange={field.onChange} placeholder="Select branch" />} /></Field><Field label="District" required error={errors.district?.message}><Controller name="district" control={control} render={({ field }) => <SearchableSelect options={districtOptions} value={field.value} onChange={field.onChange} placeholder="Search and select district" />} /></Field><Field label="Town / municipality" required error={errors.town?.message} className="field-span-2"><Input placeholder="e.g. Ntinda" {...register('town')} /></Field></div></Section>}
         {step === 3 && <Section number="04" title="Identification" description="Store only information permitted by your privacy policy and lawful basis."><div className="form-grid"><Field label="ID type" required error={errors.idType?.message}><Controller name="idType" control={control} render={({ field }) => <SearchableSelect options={idTypeOptions} value={field.value} onChange={field.onChange} placeholder="Search ID type" />} /></Field><Field label="ID reference" required error={errors.nationalId?.message}><Input placeholder="Enter reference" {...register('nationalId')} /></Field></div><div className="privacy-inline"><span className="privacy-shield"><Check size={14} /></span>Identification documents and references are sensitive and must be access-restricted.</div></Section>}
         {step === 4 && <Section number="05" title="Employment & income" description="Income details support later assessment; they do not determine approval here."><div className="form-grid"><Field label="Occupation" required error={errors.occupation?.message}><Input placeholder="e.g. Retail business owner" {...register('occupation')} /></Field><Field label="Employer / business" required error={errors.employer?.message}><Input placeholder="Company or self-employed" {...register('employer')} /></Field><Field label="Monthly income (UGX)" required error={errors.monthlyIncome?.message}><Input type="number" min="0" step="1" inputMode="numeric" placeholder="0" {...register('monthlyIncome', { valueAsNumber: true })} /></Field></div></Section>}
         {step === 5 && <Section number="06" title="Next of kin & documents" description="An alternative contact and supporting information for the file."><div className="form-grid"><Field label="Next-of-kin name" required error={errors.nextOfKin?.message}><Input placeholder="Full name" {...register('nextOfKin')} /></Field><Field label="Relationship" required error={errors.nextOfKinRelationship?.message}><Input placeholder="e.g. Spouse, sibling" {...register('nextOfKinRelationship')} /></Field><Field label="Contact number" required error={errors.nextOfKinPhone?.message}><Controller name="nextOfKinPhone" control={control} render={({ field }) => <PhoneNumberInput value={field.value} onChange={field.onChange} />} /></Field></div><div className="upload-area document-dropzone"><input id="customer-documents" type="file" multiple accept=".pdf,.jpg,.jpeg,.png" onChange={(event) => setDocuments(Array.from(event.target.files ?? []).map((file) => file.name))} /><label htmlFor="customer-documents"><UploadCloud size={24} /><strong>Choose files to upload</strong><span>PDF, JPG or PNG · Max 10 MB per file</span></label>{documents.length > 0 && <div className="uploaded-file-list document-file-list">{documents.map((name) => <span key={name}><FileText size={14} />{name}</span>)}</div>}</div></Section>}

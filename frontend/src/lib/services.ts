@@ -419,11 +419,11 @@ export const api = {
   reportSummary: (query = '') => apiRequest<Record<string, unknown>>(`/api/v1/reports/summary${query}`),
   dashboardSummary: (query = '') => apiRequest<{ activeLoans: number; confirmedRepaymentsMinor: number; overdueLoans: number; generatedAt: string }>(`/api/v1/reports/dashboard${query}`),
 
-  createCustomer: async (input: Partial<Customer>) => {
+  createCustomer: async (input: Partial<Customer> & { branchId?: string }) => {
     const record = await apiRequest<BackendCustomer>('/api/v1/customers', {
       method: 'POST',
       body: JSON.stringify({
-        branchId: branchId(),
+        branchId: input.branchId || branchId(),
         name: input.name,
         phone: input.phone,
         email: input.email,

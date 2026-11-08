@@ -29,11 +29,20 @@ async function resolveEffectivePermissions(tenantId: string, roles: string[] = [
   if (!normalized.length) return expandPermissionAliases([...new Set((explicit ?? []).filter(Boolean))])
   const mapped = await RolePermissionModel.find({ tenantId, normalizedRole: { $in: normalized } }).select('permissions normalizedRole').lean()
   const mappedByRole = new Map(mapped.map((m) => [m.normalizedRole, (m.permissions ?? []).filter(Boolean)]))
+  const defaults: Record<string, string[]> = {
+    manager: [...ALL_PERMISSIONS].filter((p) => !['identity.roles.manage', 'identity.roles.view'].includes(p)),
+    loan_officer: ['customers.view','customers.create','customers.update','customers.documents.view','customers.documents.manage','loans.applications.view','loans.applications.create','applications.view','applications.create','loans.accounts.view','collections.view','reports.view','branches.view','notifications.view'],
+    credit_officer: ['customers.view','customers.documents.view','loans.applications.view','loans.applications.assess','applications.view','loans.accounts.view','reports.view','audit.view','branches.view'],
+    approver: ['customers.view','loans.applications.view','loans.applications.approve','applications.view','applications.decide','loans.accounts.view','reports.view','audit.view','branches.view'],
+    cashier: ['customers.view','loans.accounts.view','repayments.capture','repayments.confirm','loans.disburse.authorize','reports.view','branches.view','notifications.view'],
+    accountant: ['customers.view','loans.accounts.view','repayments.capture','repayments.confirm','repayments.reverse','accounting.journal.view','accounting.journal.create','accounting.reconciliation.manage','reports.view','reports.export','audit.view','branches.view'],
+    collections_officer: ['customers.view','collections.view','collections.manage','loans.accounts.view','repayments.capture','notifications.view','notifications.manage','branches.view'],
+  }
   const rolePerms = normalized.flatMap((role) => {
     const perms = mappedByRole.get(role)
     if (perms) return perms
-    if (role === 'admin') return [...ALL_PERMISSIONS] // legacy default: admin keeps full access until super admin configures it
-    return []
+    if (role === 'admin') return [...ALL_PERMISSIONS] // legacy default
+    return defaults[role] ?? []
   })
   return expandPermissionAliases([...new Set([...(explicit ?? []), ...rolePerms].filter(Boolean))])
 }
