@@ -690,12 +690,17 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             <Field label="Branch code" required={!editBranch} hint={editBranch ? 'Code is read-only after creation.' : 'Unique branch code, e.g. KLA-01'}><Input value={branchForm.code} onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value })} placeholder="e.g. KLA-01" disabled={!!editBranch} /></Field>
             <Field label="Branch name" required><Input value={branchForm.name} onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })} placeholder="e.g. Kampala Main" /></Field>
             <Field label="District" required><Input value={branchForm.district} onChange={(e) => setBranchForm({ ...branchForm, district: e.target.value })} placeholder="e.g. Kampala" /></Field>
-            <Field label="Status"><Select value={branchForm.status} onChange={(e) => setBranchForm({ ...branchForm, status: e.target.value })}><option value="active">Active</option><option value="suspended">Suspended</option></Select></Field>
+            <Field label="Status">
+              <select className="lf-input" value={branchForm.status} onChange={(e) => setBranchForm({ ...branchForm, status: e.target.value })}>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </Field>
             <Field label="Branch manager">
-              <Select value={branchForm.managerId} onChange={(e) => setBranchForm({ ...branchForm, managerId: e.target.value })}>
+              <select className="lf-input" value={branchForm.managerId} onChange={(e) => setBranchForm({ ...branchForm, managerId: e.target.value })}>
                 <option value="">No manager assigned</option>
                 {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
+              </select>
             </Field>
             {editBranch && <Field label="Created"><Input value={branchForm.createdAt ? new Date(branchForm.createdAt).toLocaleString() : '—'} readOnly /></Field>}
             {editBranch && <Field label="Last updated"><Input value={branchForm.updatedAt ? new Date(branchForm.updatedAt).toLocaleString() : '—'} readOnly /></Field>}
