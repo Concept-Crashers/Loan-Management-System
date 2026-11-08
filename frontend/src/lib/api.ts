@@ -265,6 +265,7 @@ export async function downloadAuthenticated(path: string, filename?: string) {
 export function exportDisbursementReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/receipt`) }
 export function exportPaymentReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`) }
 export function exportLoanStatementCsv(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, `loan-statement-${id}.csv`) }
+export function exportLoanStatementPdf(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/pdf`) }
 
 export async function uploadToCloudinary(signature: { cloudName: string; apiKey: string; timestamp: number; folder: string; type: string; signature: string }, file: File) {
   const fd = new FormData()

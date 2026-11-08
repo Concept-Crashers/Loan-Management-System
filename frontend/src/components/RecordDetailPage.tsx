@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
-import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportPaymentReceipt, exportDisbursementReceipt, exportLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
+import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportPaymentReceipt, exportDisbursementReceipt, exportLoanStatementCsv, exportLoanStatementPdf, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { api } from '../lib/services'
 import type { RootState } from '../store/store'
 
@@ -166,6 +166,7 @@ export function RecordDetailPage() {
         {segment === 'loans' && String(record?.status ?? '') === 'pending_disbursement' ? <Button onClick={() => navigate(`/disbursements/new?mode=authorize&loan=${encodeURIComponent(String(record?._id ?? id))}`)}>Authorize disbursement</Button> : null}
         {segment === 'disbursements' ? <Button variant="outline" onClick={async () => { try { await exportDisbursementReceipt(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be opened.') } }}>Disbursement receipt</Button> : null}
         {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await exportLoanStatementCsv(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement export failed.') } }}>Statement CSV</Button> : null}
+        {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await exportLoanStatementPdf(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement PDF could not be opened.') } }}>Export PDF</Button> : null}
         <Button variant="outline" icon={Download} onClick={() => {
           if (segment === 'loans') { void exportLoanStatementCsv(String(record?._id ?? id)).catch(() => toast.error('Statement export failed.')); return }
           const rows = [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))]; const headers = Object.keys(rows[0] ?? {}); const csv = [headers.join(','), ...rows.map((r) => headers.map((h) => `"${String((r as any)[h] ?? '').replaceAll('"','""')}"`).join(','))].join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'})); a.download = `${segment}-${String(record?._id ?? id)}.csv`; a.click(); URL.revokeObjectURL(a.href)
