@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
-import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, exportLoanStatementCsv, shareBlob, shareLoanStatementCsv, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
+import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, shareBlob, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
 import type { LoanAccount, PaymentMethod, Repayment } from '../lib/types'
@@ -160,6 +160,26 @@ export function RecordDetailPage() {
     if (!save) return blob as Blob
   }
 
+  function statementRows() {
+    if (!statement) return [] as Record<string, unknown>[]
+    const schedule = ((statement.schedule as any[]) || []).map((r: any) => ({ type: 'schedule', date: String(r.dueDate ?? '').slice(0, 10), reference: `installment-${r.installmentNumber}`, amount_ugx: Number(r.totalMinor ?? 0) / 100, status: r.status ?? '', details: '' }))
+    const payments = ((statement.payments as any[]) || []).map((p: any) => ({ type: 'payment', date: String(p.createdAt ?? '').slice(0, 10), reference: p.reference ?? '', amount_ugx: Number(p.amountMinor ?? 0) / 100, status: p.status ?? '', details: p.method ?? '' }))
+    return [...schedule, ...payments]
+  }
+  async function downloadStatementExcel() {
+    const rows = statementRows()
+    if (!rows.length) throw new Error('No statement rows available to export.')
+    await exportReportExcel({ reportLabel: `Loan statement ${String(record?.reference ?? id)}`, reportKey: `loan-statement-${String(record?.reference ?? id)}`, rows, fromDate: '', toDate: '', org })
+  }
+  async function shareStatementExcel() {
+    const rows = statementRows()
+    if (!rows.length) throw new Error('No statement rows available to share.')
+    const blob = await exportReportExcel({ reportLabel: `Loan statement ${String(record?.reference ?? id)}`, reportKey: `loan-statement-${String(record?.reference ?? id)}`, rows, fromDate: '', toDate: '', org, save: false })
+    if (!(blob instanceof Blob)) throw new Error('Statement export could not be prepared.')
+    const r = await shareBlob(blob, `loan-statement-${String(record?.reference ?? id)}.xlsx`, 'Loan statement', `Loan statement ${String(record?.reference ?? id)} from ${org.companyName}.`)
+    if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing')
+  }
+
   async function load() {
     if (!config) return
     setLoading(true)
@@ -245,8 +265,8 @@ export function RecordDetailPage() {
         {segment === 'loans' && String(record?.status ?? '') === 'pending_disbursement' ? <Button onClick={() => navigate(`/disbursements/new?mode=authorize&loan=${encodeURIComponent(String(record?._id ?? id))}`)}>Authorize disbursement</Button> : null}
         {segment === 'disbursements' ? <Button variant="outline" onClick={async () => { try { await downloadDisbursementReceiptPDF(true); toast.success('Disbursement receipt downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Disbursement receipt could not be generated.') } }}>Disbursement receipt</Button> : null}
         {segment === 'disbursements' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadDisbursementReceiptPDF(false); if (!(blob instanceof Blob)) throw new Error('Receipt could not be prepared.'); const r = await shareBlob(blob, `disbursement-receipt-${String(record?.reference ?? id)}.pdf`, 'Disbursement receipt', `Disbursement receipt ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Receipt shared' : 'Receipt downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be shared.') } }}>Share via WhatsApp</Button> : null}
-        {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await exportLoanStatementCsv(String(record?._id ?? id)) } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement export failed.') } }}>Statement CSV</Button> : null}
-        {segment === 'loans' ? <Button variant="outline" icon={Share2} onClick={async () => { try { const r = await shareLoanStatementCsv(String(record?._id ?? id)); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share CSV</Button> : null}
+        {segment === 'loans' ? <Button variant="outline" icon={Download} onClick={async () => { try { await downloadStatementExcel(); toast.success('Statement Excel downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement export failed.') } }}>Statement Excel</Button> : null}
+        {segment === 'loans' ? <Button variant="outline" icon={Share2} onClick={async () => { try { await shareStatementExcel() } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share Excel</Button> : null}
         {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await downloadStatementPDF(true); toast.success('Statement PDF downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement PDF could not be generated.') } }}>Statement PDF</Button> : null}
         {segment === 'loans' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadStatementPDF(false); if (!(blob instanceof Blob)) throw new Error('Statement could not be prepared.'); const r = await shareBlob(blob, `loan-statement-${String(record?.reference ?? id)}.pdf`, 'Loan statement', `Loan statement ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share via WhatsApp</Button> : null}
         {segment !== 'loans' ? <Button variant="outline" icon={Download} onClick={() => void exportReportExcel({ reportLabel: `${config.title} record`, reportKey: `${segment}-${String(record?._id ?? id)}`, rows: [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))], fromDate: '', toDate: '', org }).then(() => toast.success('Export downloaded')).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>Export</Button> : null}
