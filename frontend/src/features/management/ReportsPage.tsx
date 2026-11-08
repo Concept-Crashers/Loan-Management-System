@@ -56,7 +56,8 @@ export function ReportsPage() {
     {
       key: 'portfolio',
       label: 'Loan portfolio',
-      description: 'Outstanding balances and account status across active loans.',
+      description: 'Payment due balances (total repayable minus confirmed paid, including interest) and account status across loans.',
+
       icon: WalletCards,
       count: loans.length,
       data: () => loans.map(({ ref, customer, product, principal, outstanding, status, maturity }) => ({
@@ -87,7 +88,8 @@ export function ReportsPage() {
     },
     {
       key: 'outstanding',
-      label: 'Outstanding loans',
+      label: 'Loans with payment due',
+
       description: 'Remaining balances by borrower and loan product.',
       icon: ChartNoAxesCombined,
       count: loans.filter((item) => (item.outstanding || 0) > 0).length,

@@ -55,7 +55,8 @@ export function RepaymentForm() {
     try {
       const selectedLoan = loans.find((item) => item.ref === values.loan || (item as any).id === values.loan)
       if (!selectedLoan) { setError('loan', { type: 'validate', message: 'Choose an active or overdue loan.' }); return }
-      if (values.amount > selectedLoan.outstanding) { setError('amount', { type: 'validate', message: `Payments cannot exceed the outstanding balance of ${formatUGX(selectedLoan.outstanding)}.` }); return }
+      if (values.amount > selectedLoan.outstanding) { setError('amount', { type: 'validate', message: `Payments cannot exceed the payment due of ${formatUGX(selectedLoan.outstanding)} (total repayable minus confirmed paid, including interest).` }); return }
+
       const reference = values.method === 'Cash' ? undefined : values.reference.trim()
       if (reference) {
         const duplicate = repayments.find((item) => item.reference?.trim().toLowerCase() === reference.toLowerCase())
@@ -85,7 +86,8 @@ export function RepaymentForm() {
             <Field label="Active loan" required error={errors.loan?.message} hint={selectedCustomer && !availableLoans.length ? 'No active/overdue loan found for this customer. Loans must be active/disbursed before repayments can be recorded.' : undefined}>
               <Select {...register('loan')} disabled={!selectedCustomer}>
                 <option value="">{selectedCustomer ? (availableLoans.length ? 'Choose an active loan…' : 'No active loan available') : 'Select customer first'}</option>
-                {availableLoans.map((item) => <option key={(item as any).id || item.ref} value={(item as any).id || item.ref}>{item.ref} · {item.product} · Outstanding {formatUGX(item.outstanding)}</option>)}
+                {availableLoans.map((item) => <option key={(item as any).id || item.ref} value={(item as any).id || item.ref}>{item.ref} · {item.product} · Payment due {formatUGX(item.outstanding)}</option>)}
+
               </Select>
             </Field>
             <Field label="Amount received (UGX)" required error={errors.amount?.message}><Input type="number" min="1" step="1" inputMode="numeric" placeholder="e.g. 250,000" {...register('amount')} /></Field>

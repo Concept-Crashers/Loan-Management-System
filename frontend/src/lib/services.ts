@@ -250,19 +250,20 @@ export const api = {
     const response = await apiRequest<Array<Record<string, unknown>> | { data: Array<Record<string, unknown>> }>('/api/v1/collections')
     const records = Array.isArray(response) ? response : (response.data ?? [])
     return records.map((record) => {
-      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as { _id?: string; customerId?: { name?: string; phone?: string }; outstandingPrincipalMinor?: number }) : null
+      const loanObj = typeof record.loanAccountId === 'object' && record.loanAccountId !== null ? (record.loanAccountId as any) : null
+      const outstanding = Number(loanObj?.outstandingMinor ?? (Number(loanObj?.outstandingPrincipalMinor ?? 0) + Number(loanObj?.outstandingInterestMinor ?? 0) + Number(loanObj?.outstandingFeesMinor ?? 0))) || Number(record.paymentDueMinor ?? 0)
       return {
-        id: String(record._id ?? ''),
-        customer: loanObj?.customerId?.name ?? 'Borrower',
-        loan: String(loanObj?._id ?? record.loanAccountId ?? ''),
-        outstanding: fromMinor(Number(loanObj?.outstandingPrincipalMinor ?? record.overduePrincipalMinor ?? 0)),
-        overdue: fromMinor(Number(record.overduePrincipalMinor ?? 0)),
+        id: String(record._id ?? record.id ?? ''),
+        customer: loanObj?.customerId?.name ?? String(record.customer ?? 'Borrower'),
+        loan: String(loanObj?.ref ?? loanObj?._id ?? record.loanAccountId ?? ''),
+        phone: loanObj?.customerId?.phone ?? '',
+        outstanding: fromMinor(outstanding),
+        overdue: fromMinor(Number(record.overdueMinor ?? record.overduePrincipalMinor ?? outstanding ?? 0)),
         lastPayment: String(record.createdAt ?? '').slice(0, 10),
         followUp: String(record.followUpAt ?? '').slice(0, 10),
         officer: String(record.assignedTo ?? 'Collections Officer'),
         status: record.status === 'resolved' ? 'Resolved' : record.status === 'contacted' ? 'Contacted' : record.status === 'promise_to_pay' ? 'Payment Arrangement Recorded' : record.status === 'escalated' ? 'Escalated for Review' : record.status === 'open' ? 'Awaiting Response' : 'Not Contacted',
         note: String(record.notes ?? ''),
-        phone: loanObj?.customerId?.phone ?? '',
         assignedTo: String(record.assignedTo ?? ''),
         promiseAmount: fromMinor(Number(record.promiseAmountMinor ?? 0)),
         promiseDueAt: String(record.promiseDueAt ?? '').slice(0, 10),

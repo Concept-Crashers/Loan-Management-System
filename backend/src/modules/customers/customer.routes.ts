@@ -6,7 +6,8 @@ import { asyncRoute, HttpError } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { CustomerModel } from './customer.model.js'
-import { LoanAccountModel, RepaymentScheduleModel } from '../finance/finance.model.js'
+import { LoanAccountModel, PaymentModel, RepaymentScheduleModel } from '../finance/finance.model.js'
+import { computeTermFeeMinor, computeTermInterestMinor } from '../finance/schedule.js'
 
 const router = Router()
 const customerInput = z.object({
@@ -56,8 +57,14 @@ router.get('/', requirePermission('customers.view'), asyncRoute(async (request: 
     const cur = byCustomer.get(key) ?? { loans: 0, outstandingMinor: 0 }
     const sched = schedByLoan.get(String(loan._id))
     const principalMinor = Number(loan.principalMinor ?? 0)
-    const totalInterestMinor = Number(sched?.interestMinor ?? (Number(loan.outstandingInterestMinor ?? 0) || 0))
-    const totalFeesMinor = Number(sched?.feesMinor ?? Number(loan.outstandingFeesMinor ?? 0) ?? 0)
+    const storedInterest = Number(loan.outstandingInterestMinor ?? 0)
+    const storedFees = Number(loan.outstandingFeesMinor ?? 0)
+    const snap = (loan.productSnapshot ?? {}) as any
+    const tenureMonths = Number(snap.maxTenureMonths ?? snap.minTenureMonths ?? 1) || 1
+    const computedInterest = computeTermInterestMinor(principalMinor, { annualRateBps: Number(snap.annualRateBps ?? 0), interestMethod: snap.interestMethod === 'declining_balance' ? 'declining_balance' : 'flat' }, tenureMonths)
+    const computedFees = computeTermFeeMinor(snap)
+    const totalInterestMinor = Number(sched?.interestMinor ?? (storedInterest > 0 ? storedInterest : computedInterest))
+    const totalFeesMinor = Number(sched?.feesMinor ?? (storedFees > 0 ? storedFees : computedFees))
     const totalRepayableMinor = Number(sched?.totalMinor ?? (principalMinor + totalInterestMinor + totalFeesMinor))
     const confirmedPaidMinor = paidByLoan.get(String(loan._id)) ?? 0
     const paymentDueMinor = Math.max(0, totalRepayableMinor - confirmedPaidMinor)

@@ -59,6 +59,7 @@ export function DashboardPage() {
   }, [])
 
   const totalOutstanding = useMemo(() => loans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0), [loans])
+
   const totalDisbursed = useMemo(() => loans.reduce((sum, loan) => sum + (loan.disbursed || 0), 0), [loans])
   const totalRepayments = useMemo(() => repayments.reduce((sum, payment) => sum + (payment.amount || 0), 0), [repayments])
   const overdueCount = useMemo(() => loans.filter((loan) => loan.status === 'Overdue').length, [loans])
@@ -119,7 +120,8 @@ export function DashboardPage() {
       <div className="metrics-grid">
         <MetricCard label="Total customers" value={String(customers.length)} change="Verified" icon={Users} color="blue" hint="Registered in database" />
         <MetricCard label="Total disbursed" value={formatUGX(totalDisbursed, true)} change="Active" icon={ArrowDownLeft} color="green" hint="Total loan releases" />
-        <MetricCard label="Outstanding balance" value={formatUGX(totalOutstanding, true)} change="Portfolio" icon={Wallet} color="violet" hint="Across all loan accounts" />
+        <MetricCard label="Payment due" value={formatUGX(totalOutstanding, true)} change="Portfolio" icon={Wallet} color="violet" hint="Total repayable minus confirmed paid (includes interest)" />
+
         <MetricCard label="Repayments collected" value={formatUGX(totalRepayments, true)} change="Settled" icon={Banknote} color="amber" hint="Recorded payments" />
       </div>
 
