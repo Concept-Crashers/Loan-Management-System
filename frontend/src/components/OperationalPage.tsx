@@ -320,7 +320,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }
 
   async function saveStaff() {
-    if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 12) { toast.error('Enter name, valid email, and a password with at least 12 characters.'); return }
+    if (!staffForm.name.trim() || !staffForm.email.trim() || staffForm.password.length < 13) { toast.error('Enter name, valid email, and a password with more than 12 characters (at least 13).'); return }
     setStaffSaving(true)
     try {
       await api.createStaffUser({ name: staffForm.name.trim(), email: staffForm.email.trim(), password: staffForm.password, phone: staffForm.phone.trim() || undefined, roles: [staffForm.roles] })
