@@ -26,7 +26,6 @@ const schema = z.object({
 })
 type FormInput = z.input<typeof schema>
 type FormValues = z.output<typeof schema>
-const CASH_REF = () => `CASH-RCT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 
 export function RepaymentForm() {
   const navigate = useNavigate()
@@ -57,17 +56,26 @@ export function RepaymentForm() {
       const selectedLoan = loans.find((item) => item.ref === values.loan || (item as any).id === values.loan)
       if (!selectedLoan) { setError('loan', { type: 'validate', message: 'Choose an active or overdue loan.' }); return }
       if (values.amount > selectedLoan.outstanding) { setError('amount', { type: 'validate', message: `Payments cannot exceed the outstanding balance of ${formatUGX(selectedLoan.outstanding)}.` }); return }
-      const reference = values.method === 'Cash' ? (values.reference.trim() || CASH_REF()) : values.reference.trim()
-      const duplicate = repayments.find((item) => item.reference?.trim().toLowerCase() === reference.toLowerCase())
-      if (duplicate && values.method !== 'Cash') {
-        const result = await Swal.fire({ title: 'Possible duplicate reference', text: `This reference appears on ${duplicate.id}. Confirm only after checking the source transaction.`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Continue for review', confirmButtonColor: '#d97706', cancelButtonText: 'Review entry' })
-        if (!result.isConfirmed) return
+      const reference = values.method === 'Cash' ? undefined : values.reference.trim()
+      if (reference) {
+        const duplicate = repayments.find((item) => item.reference?.trim().toLowerCase() === reference.toLowerCase())
+        if (duplicate) {
+          const result = await Swal.fire({ title: 'Possible duplicate reference', text: `This reference appears on ${duplicate.id}. Confirm only after checking the source transaction.`, icon: 'warning', showCancelButton: true, confirmButtonText: 'Continue for review', confirmButtonColor: '#d97706', cancelButtonText: 'Review entry' })
+          if (!result.isConfirmed) return
+        }
       }
       const loanAccountId = (selectedLoan as any).id || values.loan
       const record = await api.recordRepayment({ loanAccountId, amount: values.amount, method: values.method, reference })
-      toast.success('Payment recorded', { description: `${formatUGX(values.amount)} via ${values.method}. Ref: ${reference}` })
-      window.open(`/api/v1/finance/payments/${encodeURIComponent(String((record as any)?._id || (record as any)?.id || ''))}/receipt`, '_blank')
-      navigate(`/repayments/${(record as any)?._id || (record as any)?.id || ''}`)
+      const ref = String((record as any)?.reference || (record as any)?._id || (record as any)?.id || '')
+      toast.success('Payment recorded', { description: `${formatUGX(values.amount)} via ${values.method}${ref ? ` · Ref: ${ref}` : ''}` })
+      setRepayments((prev) => [record as any, ...prev])
+      setValue('customerId', '')
+      setValue('loan', '')
+      setValue('amount', '' as any)
+      setValue('reference', '')
+      setValue('notes', '')
+      setValue('date', new Date().toISOString().slice(0, 10))
+      setValue('method', values.method)
     } catch (error) { setError('root', { message: error instanceof Error ? error.message : 'Repayment could not be recorded.' }) }
   }
 
@@ -88,7 +96,7 @@ export function RepaymentForm() {
           </div><div className="terms-disclaimer"><ShieldCheck size={17} /><span>The backend validates authorization, payment allocation, and the resulting balance. Cash receipts receive a system-generated reference.</span></div></div></Card>
       <Card className="payment-allocation-card"><div className="payment-allocation-header"><span><Banknote size={17} /></span><div><h2>Payment allocation</h2><p>Illustrative preview only · authoritative allocation and receipt reference come from the lending service. Supports daily partial collections.</p></div></div><div className="allocation-line"><span>Principal</span><strong>Calculated by API</strong></div><div className="allocation-line"><span>Interest</span><strong>Calculated by API</strong></div><div className="allocation-line"><span>Permitted fees</span><strong>Calculated by API</strong></div><div className="allocation-total"><span>Amount entered</span><strong>{formatUGX(Number.isFinite(amount) ? amount : 0)}</strong></div></Card>
       </div><aside className="repayment-side"><Card className="receipt-preview"><div className="receipt-preview-head"><span className="receipt-icon"><ReceiptText size={18} /></span><div><h2>Receipt preview</h2><p>Branded receipt issued after recording</p></div></div><div className="receipt-skeleton receipt-skeleton-branded"><div className="receipt-demo-brand"><span className="receipt-demo-org"><span className="receipt-demo-logo" aria-hidden>{(branding.companyName || 'Trust Loans').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase()}</span><strong>{branding.companyName || 'Trust Loans'}</strong></span><span className="receipt-demo-pill">PAYMENT RECEIPT</span></div><div className="receipt-hero-preview"><span className="receipt-placeholder-label">Amount received</span><div className="receipt-amount-placeholder">{branding.currency || 'UGX'} {new Intl.NumberFormat('en-UG', { maximumFractionDigits: 0 }).format(Number.isFinite(amount) ? amount : 0)}</div></div><div className="receipt-preview-grid"><div><span className="receipt-placeholder-label">Customer</span><div className="receipt-placeholder-line" /></div><div><span className="receipt-placeholder-label">Loan account</span><div className="receipt-placeholder-line short" /></div><div><span className="receipt-placeholder-label">Method</span><div className="receipt-placeholder-line short" /></div><div><span className="receipt-placeholder-label">Reference</span><div className="receipt-placeholder-line" /></div></div><div className="receipt-stamp">PREVIEW</div></div><div className="receipt-note"><Info size={14} />Receipt reference, allocation, and financial records are issued by the backend using your system branding.</div></Card><div className="privacy-inline repayment-privacy"><ShieldCheck size={15} /><span>Handle customer payment data only through authorized staff and approved channels.</span></div></aside>
-      <div className="form-footer"><span>Payment remains pending until server confirmation.</span><div><Button type="button" variant="outline" icon={X} onClick={() => navigate('/repayments')}>Cancel</Button><Button type="submit" icon={ReceiptText} loading={isSubmitting}>Record payment</Button></div></div>
+      <div className="form-footer"><span>Payment remains pending until server confirmation.</span><div><Button type="button" variant="outline" icon={X} onClick={() => navigate('/repayments')}>Cancel</Button><Button type="submit" icon={ReceiptText} loading={isSubmitting} disabled={isSubmitting}>Record payment</Button></div></div>
     </form>
   </div>
 }
