@@ -298,13 +298,15 @@ export interface ReportExcelOptions {
   toDate: string
   org: OrgInfo
   summary?: { totalDisbursed?: number; totalRepayments?: number; totalOutstanding?: number; parRate?: string }
+  save?: boolean
 }
 
-export async function exportReportExcel(options: ReportExcelOptions): Promise<void> {
+export async function exportReportExcel(options: ReportExcelOptions): Promise<Blob | void> {
   const XLSX = await import('xlsx')
-  const { reportLabel, reportKey, rows, fromDate, toDate, org, summary } = options
+  const { reportLabel, reportKey, rows, fromDate, toDate, org, summary, save = true } = options
   const docNo = docNumber('RPT')
   const now = new Date()
+  const filename = `${reportKey}-report-${now.toISOString().slice(0, 10)}.xlsx`
 
   const wb = XLSX.utils.book_new()
 
@@ -390,7 +392,11 @@ export async function exportReportExcel(options: ReportExcelOptions): Promise<vo
   ]
 
   XLSX.utils.book_append_sheet(wb, ws, reportLabel.slice(0, 31))
-  XLSX.writeFile(wb, `${reportKey}-report-${now.toISOString().slice(0, 10)}.xlsx`)
+  if (!save) {
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+    return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  }
+  XLSX.writeFile(wb, filename)
 }
 
 // ─── C. generateReceiptPDF ────────────────────────────────────────────────────

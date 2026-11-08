@@ -7,9 +7,8 @@ import { shareBlob } from '../../lib/api'
 import { api } from '../../lib/services'
 import { formatUGX } from '../../lib/format'
 import type { Application, CollectionRecord, Customer, LoanAccount, Repayment, Transaction } from '../../lib/types'
-import { exportReportPDF, exportReportExcel } from '../../lib/exportDocs'
+import { exportReportExcel, type OrgInfo } from '../../lib/exportDocs'
 import type { RootState } from '../../store/store'
-
 
 export function ReportsPage() {
   const branding = useSelector((state: RootState) => state.branding)
@@ -178,15 +177,22 @@ export function ReportsPage() {
   const overdueLoans = useMemo(() => loans.filter((l) => l.status === 'Overdue'), [loans])
   const parRate = totalOutstanding > 0 ? ((overdueLoans.reduce((sum, l) => sum + (l.outstanding || 0), 0) / totalOutstanding) * 100).toFixed(1) : '0.0'
 
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
+  const reportOptions = {
+    reportLabel: report.label,
+    reportKey: report.key,
+    rows,
+    fromDate,
+    toDate,
+    org,
+    summary: { totalDisbursed, totalRepayments, totalOutstanding, parRate },
+  }
+
   async function downloadExcel() {
     if (!rows.length) { toast.info('There are no rows to export for the selected filters.'); return }
     setExporting(true)
     try {
-      const XLSX = await import('xlsx')
-      const workbook = XLSX.utils.book_new()
-      const sheet = XLSX.utils.json_to_sheet(rows)
-      XLSX.utils.book_append_sheet(workbook, sheet, report.label.slice(0, 31))
-      XLSX.writeFile(workbook, `${report.key}-report.xlsx`)
+      await exportReportExcel(reportOptions)
       toast.success('Excel report downloaded')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Export failed.')
@@ -198,13 +204,9 @@ export function ReportsPage() {
     if (!rows.length) { toast.info('There are no rows to share for the selected filters.'); return }
     setSharing(true)
     try {
-      const XLSX = await import('xlsx')
-      const workbook = XLSX.utils.book_new()
-      const sheet = XLSX.utils.json_to_sheet(rows)
-      XLSX.utils.book_append_sheet(workbook, sheet, report.label.slice(0, 31))
-      const out = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const result = await shareBlob(blob, `${report.key}-report.xlsx`, `${report.label} report`, `${report.label} report export from Trust Loans.`)
+      const blob = await exportReportExcel({ ...reportOptions, save: false })
+      if (!(blob instanceof Blob)) throw new Error('Report file could not be prepared for sharing.')
+      const result = await shareBlob(blob, `${report.key}-report.xlsx`, `${report.label} report`, `${report.label} report export from ${org.companyName}.`)
       if (result !== 'cancelled') toast.success(result === 'shared' ? 'Report shared' : 'Report downloaded for WhatsApp sharing')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Share failed.')
