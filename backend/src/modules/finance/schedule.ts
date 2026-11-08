@@ -1,10 +1,12 @@
 import type { ClientSession } from 'mongoose'
 import { RepaymentScheduleModel } from './finance.model.js'
 
-type ProductTerms = {
+export type ProductTerms = {
   annualRateBps: number
   interestMethod: 'flat' | 'declining_balance'
   repaymentFrequency: 'daily' | 'weekly' | 'biweekly' | 'monthly'
+  minTenureMonths?: number
+  maxTenureMonths?: number
   fees?: Array<{ amountMinor?: number; amount?: number }>
 }
 
@@ -17,6 +19,21 @@ function addPeriod(date: Date, frequency: ProductTerms['repaymentFrequency']) {
   return result
 }
 
+
+export function schedulePeriods(terms: Pick<ProductTerms,'repaymentFrequency'>, tenureMonths: number) {
+  return terms.repaymentFrequency === 'daily' ? tenureMonths * 30 : terms.repaymentFrequency === 'weekly' ? tenureMonths * 4 : terms.repaymentFrequency === 'biweekly' ? tenureMonths * 2 : tenureMonths
+}
+
+export function computeTermInterestMinor(principalMinor: number, terms: Pick<ProductTerms,'annualRateBps'|'interestMethod'>, tenureMonths: number) {
+  const months = Math.max(1, Math.floor(tenureMonths || 1))
+  if (terms.interestMethod === 'flat') return Math.round(principalMinor * terms.annualRateBps / 10_000 * months / 12)
+  return Math.round(principalMinor * (terms.annualRateBps / 10_000) * months / 12 / 2)
+}
+
+export function computeTermFeeMinor(terms: Pick<ProductTerms,'fees'>) {
+  return (terms.fees ?? []).reduce((sum, fee) => sum + Number(fee.amountMinor ?? fee.amount ?? 0), 0)
+}
+
 export async function generateRepaymentSchedule(account: {
   id: string
   tenantId: string
@@ -25,11 +42,9 @@ export async function generateRepaymentSchedule(account: {
   productSnapshot: ProductTerms
 }, tenureMonths: number, session?: ClientSession) {
   const terms = account.productSnapshot
-  const periods = terms.repaymentFrequency === 'daily' ? tenureMonths * 30 : terms.repaymentFrequency === 'weekly' ? tenureMonths * 4 : terms.repaymentFrequency === 'biweekly' ? tenureMonths * 2 : tenureMonths
-  const totalInterest = terms.interestMethod === 'flat'
-    ? Math.round(account.principalMinor * terms.annualRateBps / 10_000 * tenureMonths / 12)
-    : Math.round(account.principalMinor * (terms.annualRateBps / 10_000) * tenureMonths / 12 / 2)
-  const feeTotal = (terms.fees ?? []).reduce((sum, fee) => sum + Number(fee.amountMinor ?? fee.amount ?? 0), 0)
+  const periods = schedulePeriods(terms, tenureMonths)
+  const totalInterest = computeTermInterestMinor(account.principalMinor, terms, tenureMonths)
+  const feeTotal = computeTermFeeMinor(terms)
   const rows = Array.from({ length: periods }, (_, index) => {
     const principal = Math.floor(account.principalMinor / periods) + (index < account.principalMinor % periods ? 1 : 0)
     const interest = Math.floor(totalInterest / periods) + (index < totalInterest % periods ? 1 : 0)

@@ -6,6 +6,7 @@ import { asyncRoute, HttpError } from '../../core/http.js'
 import { assertBranchAccess, currentUser } from '../../core/scope.js'
 import { recordAudit } from '../audit/audit.service.js'
 import { CustomerModel } from './customer.model.js'
+import { LoanAccountModel, RepaymentScheduleModel } from '../finance/finance.model.js'
 
 const router = Router()
 const customerInput = z.object({
@@ -35,7 +36,26 @@ router.get('/', requirePermission('customers.view'), asyncRoute(async (request: 
   assertBranchAccess(request, branchId)
   const filter = { tenantId: user.tenantId, branchId, ...(query.search ? { $or: [{ name: new RegExp(query.search, 'i') }, { phone: new RegExp(query.search, 'i') }, { customerNumber: new RegExp(query.search, 'i') }] } : {}) }
   const [data, total] = await Promise.all([CustomerModel.find(filter).select('-nationalId').sort({ createdAt: -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(), CustomerModel.countDocuments(filter)])
-  response.json({ success: true, message: 'Customers retrieved successfully', data, meta: { page: query.page, limit: query.limit, total } })
+  const ids = data.map((c: any) => c._id).filter(Boolean)
+  const loans = ids.length ? await LoanAccountModel.find({ tenantId: user.tenantId, branchId, customerId: { $in: ids }, status: { $nin: ['written_off','closed'] } }).select('customerId status principalMinor outstandingPrincipalMinor outstandingInterestMinor outstandingFeesMinor productSnapshot').lean() : []
+  const loanIds = loans.map((l: any) => l._id)
+  const schedAgg = loanIds.length ? await RepaymentScheduleModel.aggregate([{ $match: { tenantId: user.tenantId, loanAccountId: { $in: loanIds } } }, { $group: { _id: '$loanAccountId', interestMinor: { $sum: '$interestMinor' }, feesMinor: { $sum: '$feesMinor' } } }]) : []
+  const schedByLoan = new Map(schedAgg.map((r: any) => [String(r._id), r]))
+  const byCustomer = new Map<string, { loans: number; outstandingMinor: number }>()
+  for (const loan of loans as any[]) {
+    const key = String(loan.customerId)
+    const cur = byCustomer.get(key) ?? { loans: 0, outstandingMinor: 0 }
+    const principalOut = Number(loan.outstandingPrincipalMinor ?? 0)
+    const sched = schedByLoan.get(String(loan._id))
+    const interestOut = Number(loan.outstandingInterestMinor ?? 0) > 0 ? Number(loan.outstandingInterestMinor ?? 0) : (principalOut > 0 && !['settled','written_off','closed'].includes(String(loan.status)) ? Number(sched?.interestMinor ?? 0) : 0)
+    const feesOut = Number(loan.outstandingFeesMinor ?? 0) > 0 ? Number(loan.outstandingFeesMinor ?? 0) : (principalOut > 0 && !['settled','written_off','closed'].includes(String(loan.status)) ? Number(sched?.feesMinor ?? 0) : 0)
+    const stored = principalOut + interestOut + feesOut
+    if (['active','in_arrears','restructured','pending_disbursement'].includes(String(loan.status))) cur.outstandingMinor += Math.max(0, stored)
+    if (!['settled','written_off','closed'].includes(String(loan.status))) cur.loans += 1
+    byCustomer.set(key, cur)
+  }
+  const enriched = data.map((c: any) => ({ ...c, loans: byCustomer.get(String(c._id))?.loans ?? 0, outstandingMinor: byCustomer.get(String(c._id))?.outstandingMinor ?? 0 }))
+  response.json({ success: true, message: 'Customers retrieved successfully', data: enriched, meta: { page: query.page, limit: query.limit, total } })
 }))
 
 router.post('/', requirePermission('customers.create'), asyncRoute(async (request: AuthRequest, response) => {

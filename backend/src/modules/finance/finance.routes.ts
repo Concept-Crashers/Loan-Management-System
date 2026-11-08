@@ -9,11 +9,41 @@ import { LoanAccountModel, PaymentModel, JournalModel, DisbursementModel, Cashbo
 import mongoose from 'mongoose'
 import { ApplicationModel } from '../applications/application.model.js'
 import { pagination, paged } from '../../core/pagination.js'
+import { computeTermFeeMinor, computeTermInterestMinor } from './schedule.js'
 
 const router = Router()
 router.use(requireAuth)
 
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+const loanTermMonths = (loan: any) => {
+  const appMonths = Number(loan?.applicationId?.tenureMonths ?? loan?.application?.tenureMonths ?? 0)
+  if (Number.isFinite(appMonths) && appMonths > 0) return Math.floor(appMonths)
+  const snap = loan?.productSnapshot ?? {}
+  const max = Number(snap.maxTenureMonths ?? snap.minTenureMonths ?? 1)
+  return Number.isFinite(max) && max > 0 ? Math.floor(max) : 1
+}
+const loanInterestTotalMinor = (loan: any, schedule?: any[]) => {
+  const fromSchedule = Array.isArray(schedule) && schedule.length ? schedule.reduce((sum, r) => sum + Number(r.interestMinor ?? 0), 0) : 0
+  if (fromSchedule > 0) return fromSchedule
+  const terms = loan?.productSnapshot ?? {}
+  return computeTermInterestMinor(Number(loan?.principalMinor ?? 0), { annualRateBps: Number(terms.annualRateBps ?? 0), interestMethod: terms.interestMethod === 'declining_balance' ? 'declining_balance' : 'flat' }, loanTermMonths(loan))
+}
+const loanFeeTotalMinor = (loan: any, schedule?: any[]) => {
+  const fromSchedule = Array.isArray(schedule) && schedule.length ? schedule.reduce((sum, r) => sum + Number(r.feesMinor ?? 0), 0) : 0
+  if (fromSchedule > 0) return fromSchedule
+  return computeTermFeeMinor(loan?.productSnapshot ?? {})
+}
+const accrueFixedTermCharges = (loan: any, schedule?: any[]) => {
+  const interestTotal = loanInterestTotalMinor(loan, schedule)
+  const feeTotal = loanFeeTotalMinor(loan, schedule)
+  const interestAccrued = Number(loan.outstandingInterestMinor ?? 0) === 0 && !['settled', 'written_off', 'closed'].includes(String(loan.status ?? '')) ? Math.max(0, interestTotal) : 0
+  const feeAccrued = Number(loan.outstandingFeesMinor ?? 0) === 0 && !['settled', 'written_off', 'closed'].includes(String(loan.status ?? '')) ? Math.max(0, feeTotal) : 0
+  if (interestAccrued) loan.outstandingInterestMinor = interestAccrued
+  if (feeAccrued) loan.outstandingFeesMinor = feeAccrued
+  return { interestAccrued, feeAccrued, interestTotal, feeTotal }
+}
+const effectiveOutstanding = (loan: any) => Number(loan.outstandingPrincipalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0)
 const receiptTheme = (kind: 'payment' | 'disbursement' | 'statement', orgName: string, currency: string, primary: string, secondary: string, logoUrl?: string) => {
   const safeOrg = esc(orgName || 'Trust Loans')
   const p = /^#[0-9a-f]{3,8}$/i.test(primary || '') ? primary : '#091426'
@@ -76,13 +106,23 @@ router.get('/loans', requirePermission('loans.accounts.view'), asyncRoute(async 
   const branchId = request.query.branchId ? String(request.query.branchId) : undefined
   const page = pagination(request)
   const filter = { tenantId: user.tenantId, ...branchFilter(request, branchId) }
-  const result = await paged(LoanAccountModel, filter, page)
-  const data = await LoanAccountModel.find(filter).populate('customerId', 'name customerNumber').sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
-  response.json({ success: true, message: 'Loan accounts retrieved successfully', data: data.map((loan) => {
-    const customer = loan.customerId as unknown as { name?: string; customerNumber?: string; _id?: string }
-    const outstandingMinor = Number(loan.outstandingPrincipalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0)
-    return { ...loan, ref: String(loan._id), applicationId: String(loan.applicationId), customerId: String(customer?._id ?? loan.customerId), customer: customer.name ?? customer.customerNumber ?? '', outstandingMinor, outstandingPrincipalMinor: Number(loan.outstandingPrincipalMinor ?? 0), outstandingInterestMinor: Number(loan.outstandingInterestMinor ?? 0), outstandingFeesMinor: Number(loan.outstandingFeesMinor ?? 0) }
-  }) , meta: result.meta })
+  const total = await LoanAccountModel.countDocuments(filter)
+  const loans = await LoanAccountModel.find(filter).populate('customerId', 'name customerNumber').populate('applicationId','tenureMonths').sort({ createdAt: -1 }).skip(page.skip).limit(page.pageSize).lean()
+  const loanIds = loans.map((l: any) => l._id)
+  const schedules = loanIds.length ? await RepaymentScheduleModel.aggregate([{ $match: { tenantId: user.tenantId, loanAccountId: { $in: loanIds } } }, { $group: { _id: '$loanAccountId', interestMinor: { $sum: '$interestMinor' }, feesMinor: { $sum: '$feesMinor' }, totalMinor: { $sum: '$totalMinor' } } }]) : []
+  const schedByLoan = new Map(schedules.map((r: any) => [String(r._id), r]))
+  const data = loans.map((loan: any) => {
+    const customer = (loan.customerId ?? {}) as Record<string, string>
+    const sched = schedByLoan.get(String(loan._id))
+    const expectedInterest = loanInterestTotalMinor(loan, sched ? [{ interestMinor: sched.interestMinor }] : undefined)
+    const expectedFees = loanFeeTotalMinor(loan, sched ? [{ feesMinor: sched.feesMinor }] : undefined)
+    const principalOut = Number(loan.outstandingPrincipalMinor ?? 0)
+    const interestOut = Number(loan.outstandingInterestMinor ?? 0) > 0 || ['settled','written_off','closed'].includes(String(loan.status)) ? Number(loan.outstandingInterestMinor ?? 0) : (principalOut > 0 ? Math.max(0, expectedInterest) : 0)
+    const feesOut = Number(loan.outstandingFeesMinor ?? 0) > 0 || ['settled','written_off','closed'].includes(String(loan.status)) ? Number(loan.outstandingFeesMinor ?? 0) : (principalOut > 0 ? Math.max(0, expectedFees) : 0)
+    const outstandingMinor = principalOut + interestOut + feesOut
+    return { ...loan, ref: String(loan._id), applicationId: String((loan.applicationId as any)?._id ?? loan.applicationId), customerId: String(customer?._id ?? loan.customerId), customer: customer.name ?? customer.customerNumber ?? '', outstandingMinor, outstandingPrincipalMinor: principalOut, outstandingInterestMinor: interestOut, outstandingFeesMinor: feesOut, totalInterestMinor: expectedInterest, totalRepayableMinor: Number(sched?.totalMinor ?? (Number(loan.principalMinor ?? 0) + expectedInterest + expectedFees)) }
+  })
+  response.json({ success: true, message: 'Loan accounts retrieved successfully', data, meta: { page: page.page, pageSize: page.pageSize, total } })
 }))
 router.get('/payments', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
@@ -303,12 +343,20 @@ router.post(['/disbursements/:id/execute', '/disbursements/:id/complete'], requi
       if (disbursement.status !== 'authorized') throw new HttpError(409, 'INVALID_DISBURSEMENT_STATE', 'This disbursement cannot be executed.')
       const loan = await LoanAccountModel.findOne({ _id: disbursement.loanAccountId, tenantId: user.tenantId, branchId: disbursement.branchId }).session(session)
       if (!loan || loan.status !== 'pending_disbursement') throw new HttpError(409, 'INVALID_LOAN_STATE', 'The loan is not awaiting disbursement.')
+      const application = await ApplicationModel.findOne({ _id: loan.applicationId, tenantId: user.tenantId }).select('tenureMonths').lean().session(session) as any
+      const schedule = await RepaymentScheduleModel.find({ tenantId: user.tenantId, loanAccountId: loan.id }).lean().session(session)
+      const loanForTerms = application?.tenureMonths ? { ...(loan.toObject() as any), applicationId: { _id: loan.applicationId, tenureMonths: application.tenureMonths } } : loan
+      const { interestAccrued, feeAccrued } = accrueFixedTermCharges(loanForTerms as any, schedule as any[])
+      if (interestAccrued) loan.outstandingInterestMinor = Number(loan.outstandingInterestMinor ?? 0) + interestAccrued
+      if (feeAccrued) loan.outstandingFeesMinor = Number(loan.outstandingFeesMinor ?? 0) + feeAccrued
       loan.status = 'active'; loan.version += 1
       disbursement.status = 'completed'; disbursement.completedBy = user.id; disbursement.completedAt = new Date()
       await loan.save({ session }); await disbursement.save({ session })
       const period = await openPeriod(user.tenantId, disbursement.branchId)
       await JournalModel.create([{ tenantId: user.tenantId, branchId: disbursement.branchId, periodId: period.id, sourceType: 'disbursement', sourceId: disbursement.id, lines: [{ account: 'loan_receivable', debitMinor: disbursement.amountMinor }, { account: 'cash', creditMinor: disbursement.amountMinor }] }], { session })
-      await recordAudit({ user, action: 'disbursement.completed', entityType: 'disbursement', entityId: disbursement.id, branchId: disbursement.branchId, next: { status: disbursement.status }, session })
+      if (interestAccrued > 0) await JournalModel.create([{ tenantId: user.tenantId, branchId: disbursement.branchId, periodId: period.id, sourceType: 'interest_accrual', sourceId: String(loan._id), lines: [{ account: 'loan_receivable', debitMinor: interestAccrued }, { account: 'interest_income', creditMinor: interestAccrued }] }], { session })
+      if (feeAccrued > 0) await JournalModel.create([{ tenantId: user.tenantId, branchId: disbursement.branchId, periodId: period.id, sourceType: 'fee_accrual', sourceId: String(loan._id), lines: [{ account: 'loan_receivable', debitMinor: feeAccrued }, { account: 'fee_income', creditMinor: feeAccrued }] }], { session })
+      await recordAudit({ user, action: 'disbursement.completed', entityType: 'disbursement', entityId: disbursement.id, branchId: disbursement.branchId, next: { status: disbursement.status, interestAccruedMinor: interestAccrued, feeAccruedMinor: feeAccrued, outstandingMinor: effectiveOutstanding(loan) }, session })
       result = disbursement.toObject()
     })
   } finally { await session.endSession() }
@@ -334,8 +382,11 @@ router.post('/payments/:id/confirm', requirePermission('repayments.confirm'), as
       if (loan.outstandingPrincipalMinor + loan.outstandingInterestMinor + loan.outstandingFeesMinor === 0) loan.status = 'settled'
       await payment.save({ session }); await loan.save({ session })
       const period = await openPeriod(user.tenantId, payment.branchId)
-      await JournalModel.create([{ tenantId: user.tenantId, branchId: payment.branchId, periodId: period.id, sourceType: 'repayment', sourceId: payment.id, lines: [{ account: 'cash', debitMinor: payment.amountMinor }, { account: 'loan_receivable', creditMinor: principal }, { account: 'interest_income', creditMinor: interest }, { account: 'fee_income', creditMinor: fees }] }], { session })
-      await recordAudit({ user, action: 'repayment.confirmed', entityType: 'repayment', entityId: payment.id, branchId: payment.branchId, next: { allocations: payment.allocations }, session })
+      const lines: Array<{ account: string; debitMinor?: number; creditMinor?: number }> = [{ account: 'cash', debitMinor: payment.amountMinor }]
+      const receivableCredit = principal + interest + fees
+      if (receivableCredit > 0) lines.push({ account: 'loan_receivable', creditMinor: receivableCredit })
+      await JournalModel.create([{ tenantId: user.tenantId, branchId: payment.branchId, periodId: period.id, sourceType: 'repayment', sourceId: payment.id, lines }], { session })
+      await recordAudit({ user, action: 'repayment.confirmed', entityType: 'repayment', entityId: payment.id, branchId: payment.branchId, next: { allocations: payment.allocations, outstandingMinor: effectiveOutstanding(loan) }, session })
       result = { payment: payment.toObject(), loan: loan.toObject() }
     })
   } finally { await session.endSession() }
@@ -361,7 +412,10 @@ router.post('/payments/:id/reverse', requirePermission('repayments.reverse'), as
       if (loan.status === 'settled') loan.status = 'active'; loan.version += 1
       await payment.save({ session }); await loan.save({ session })
       const period = await openPeriod(user.tenantId, payment.branchId)
-      await JournalModel.create([{ tenantId: user.tenantId, branchId: payment.branchId, periodId: period.id, sourceType: 'repayment_reversal', sourceId: payment.id, lines: [{ account: 'cash', creditMinor: payment.amountMinor }, { account: 'loan_receivable', debitMinor: principal }, { account: 'interest_income', debitMinor: interest }, { account: 'fee_income', debitMinor: fees }] }], { session })
+      const lines: Array<{ account: string; debitMinor?: number; creditMinor?: number }> = [{ account: 'cash', creditMinor: payment.amountMinor }]
+      const receivableDebit = principal + interest + fees
+      if (receivableDebit > 0) lines.push({ account: 'loan_receivable', debitMinor: receivableDebit })
+      await JournalModel.create([{ tenantId: user.tenantId, branchId: payment.branchId, periodId: period.id, sourceType: 'repayment_reversal', sourceId: payment.id, lines }], { session })
       await recordAudit({ user, action: 'repayment.reversed', entityType: 'repayment', entityId: payment.id, branchId: payment.branchId, reason, next: { status: payment.status }, session })
       result = payment.toObject()
     })

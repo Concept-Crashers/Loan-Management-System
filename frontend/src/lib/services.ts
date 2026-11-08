@@ -70,7 +70,7 @@ const identifier = (record: { _id?: string; id?: string }) => record.id ?? recor
 const fromMinor = (value: number | undefined) => (value ?? 0) / 100
 const toMinor = (value: number) => Math.round(value * 100)
 
-function mapCustomer(record: BackendCustomer): Customer {
+function mapCustomer(record: BackendCustomer & { loans?: number; outstandingMinor?: number }): Customer {
   const mongoId = identifier(record)
   return {
     id: record.customerNumber ?? mongoId,
@@ -80,8 +80,8 @@ function mapCustomer(record: BackendCustomer): Customer {
     email: record.email ?? '',
     district: record.district,
     town: '',
-    loans: 0,
-    outstanding: 0,
+    loans: Number((record as any).loans ?? 0),
+    outstanding: fromMinor(Number((record as any).outstandingMinor ?? 0)),
     status: record.status === 'inactive' ? 'Inactive' : 'Active',
     registered: new Date().toISOString().slice(0, 10),
     dateOfBirth: record.dateOfBirth,
