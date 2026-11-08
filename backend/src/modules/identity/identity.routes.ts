@@ -15,7 +15,7 @@ import { recordAudit } from '../audit/audit.service.js'
 
 const router = Router()
 const loginSchema = z.object({ email: z.email(), password: z.string().min(1), mfaCode: z.string().optional() })
-const passwordSchema = z.string().min(12).regex(/[A-Z]/, 'Password must contain an uppercase letter.').regex(/[a-z]/, 'Password must contain a lowercase letter.').regex(/[0-9]/, 'Password must contain a number.')
+const passwordSchema = z.string().min(8, 'Password must be at least 8 characters.').regex(/[A-Z]/, 'Password must contain an uppercase letter.').regex(/[a-z]/, 'Password must contain a lowercase letter.').regex(/[0-9]/, 'Password must contain a number.')
 const token = () => crypto.randomBytes(32).toString('base64url')
 const tokenHash = (value: string) => crypto.createHash('sha256').update(value).digest('hex')
 const encryptionKey = () => crypto.createHash('sha256').update(env.JWT_ACCESS_SECRET).digest()
