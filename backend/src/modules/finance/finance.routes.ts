@@ -89,10 +89,11 @@ router.get('/loans/:id/statement', requirePermission('loans.accounts.view'), asy
     PaymentModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
     DisbursementModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
   ])
-  const totalInterestMinor = (schedule as any[]).reduce((s, r) => s + Number(r.interestMinor ?? 0), 0)
-  const totalRepayableMinor = (schedule as any[]).reduce((s, r) => s + Number(r.totalMinor ?? 0), 0) || (Number(loan.principalMinor ?? 0) + Number(loan.outstandingInterestMinor ?? 0) + Number(loan.outstandingFeesMinor ?? 0))
+  const totalInterestMinor = (schedule as any[]).reduce((s, r) => s + Number(r.interestMinor ?? 0), 0) || loanInterestTotalMinor(loan as any, schedule as any[])
+  const totalRepayableMinor = (schedule as any[]).reduce((s, r) => s + Number(r.totalMinor ?? 0), 0) || (Number(loan.principalMinor ?? 0) + totalInterestMinor + loanFeeTotalMinor(loan as any, schedule as any[]))
   const confirmedPaidMinor = payments.filter((p: any) => p.status === 'confirmed').reduce((s, p: any) => s + Number(p.amountMinor ?? 0), 0)
-  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), confirmedPaidMinor, totalInterestMinor, totalRepayableMinor } } })
+  const paymentDueMinor = Math.max(0, totalRepayableMinor - confirmedPaidMinor)
+  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), confirmedPaidMinor, totalInterestMinor, totalRepayableMinor, paymentDueMinor } } })
 }))
 router.get('/payments/:id', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
