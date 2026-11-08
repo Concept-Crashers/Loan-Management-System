@@ -31,27 +31,39 @@ router.get('/:id', requirePermission('customers.view'), asyncRoute(async (reques
 router.get('/', requirePermission('customers.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
   const query = z.object({ branchId: z.string().optional(), search: z.string().optional(), page: z.coerce.number().int().positive().default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query)
-  const branchId = query.branchId ?? user.branchIds[0]
-  if (!branchId) throw new HttpError(403, 'NO_BRANCH', 'No branch is assigned to this user.')
-  assertBranchAccess(request, branchId)
-  const filter = { tenantId: user.tenantId, branchId, ...(query.search ? { $or: [{ name: new RegExp(query.search, 'i') }, { phone: new RegExp(query.search, 'i') }, { customerNumber: new RegExp(query.search, 'i') }] } : {}) }
+  const { branchFilter } = await import('../../core/scope.js')
+  const scope = branchFilter(request, query.branchId) as Record<string, unknown>
+  if (!('branchId' in scope) && query.branchId) scope.branchId = query.branchId
+  // Non-overall users must have at least one accessible branch scope unless a specific allowed branch was requested.
+  const roles = (user.roles ?? []).map((r) => String(r).toLowerCase().replace(/[\s-]+/g, '_'))
+  const overall = roles.some((r) => r === 'super_admin' || r === 'superadmin')
+  if (!overall && !query.branchId && !user.branchIds?.length) throw new HttpError(403, 'NO_BRANCH', 'No branch is assigned to this user. Ask an administrator to assign a branch in Staff management.')
+  const filter = { tenantId: user.tenantId, ...scope, ...(query.search ? { $or: [{ name: new RegExp(query.search, 'i') }, { phone: new RegExp(query.search, 'i') }, { customerNumber: new RegExp(query.search, 'i') }] } : {}) }
   const [data, total] = await Promise.all([CustomerModel.find(filter).select('-nationalId').sort({ createdAt: -1 }).skip((query.page - 1) * query.limit).limit(query.limit).lean(), CustomerModel.countDocuments(filter)])
   const ids = data.map((c: any) => c._id).filter(Boolean)
-  const loans = ids.length ? await LoanAccountModel.find({ tenantId: user.tenantId, branchId, customerId: { $in: ids }, status: { $nin: ['written_off','closed'] } }).select('customerId status principalMinor outstandingPrincipalMinor outstandingInterestMinor outstandingFeesMinor productSnapshot').lean() : []
+  const loanScope = { tenantId: user.tenantId, ...(scope.branchId ? { branchId: scope.branchId } : {}), customerId: { $in: ids }, status: { $nin: ['written_off','closed'] } }
+  const loans = ids.length ? await LoanAccountModel.find(loanScope).select('customerId status principalMinor outstandingPrincipalMinor outstandingInterestMinor outstandingFeesMinor productSnapshot').lean() : []
   const loanIds = loans.map((l: any) => l._id)
-  const schedAgg = loanIds.length ? await RepaymentScheduleModel.aggregate([{ $match: { tenantId: user.tenantId, loanAccountId: { $in: loanIds } } }, { $group: { _id: '$loanAccountId', interestMinor: { $sum: '$interestMinor' }, feesMinor: { $sum: '$feesMinor' } } }]) : []
-  const schedByLoan = new Map(schedAgg.map((r: any) => [String(r._id), r]))
+  const [schedAgg, paidAgg] = loanIds.length ? await Promise.all([
+    RepaymentScheduleModel.aggregate([{ $match: { tenantId: user.tenantId, loanAccountId: { $in: loanIds } } }, { $group: { _id: '$loanAccountId', interestMinor: { $sum: '$interestMinor' }, feesMinor: { $sum: '$feesMinor' }, totalMinor: { $sum: '$totalMinor' } } }]),
+    (await import('../finance/finance.model.js')).PaymentModel.aggregate([{ $match: { tenantId: user.tenantId, loanAccountId: { $in: loanIds }, status: 'confirmed' } }, { $group: { _id: '$loanAccountId', paidMinor: { $sum: '$amountMinor' } } }]),
+  ]) : [[], []]
+  const schedByLoan = new Map((schedAgg as any[]).map((r) => [String(r._id), r]))
+  const paidByLoan = new Map((paidAgg as any[]).map((r) => [String(r._id), Number(r.paidMinor ?? 0)]))
   const byCustomer = new Map<string, { loans: number; outstandingMinor: number }>()
   for (const loan of loans as any[]) {
     const key = String(loan.customerId)
     const cur = byCustomer.get(key) ?? { loans: 0, outstandingMinor: 0 }
-    const principalOut = Number(loan.outstandingPrincipalMinor ?? 0)
     const sched = schedByLoan.get(String(loan._id))
-    const interestOut = Number(loan.outstandingInterestMinor ?? 0) > 0 ? Number(loan.outstandingInterestMinor ?? 0) : (principalOut > 0 && !['settled','written_off','closed'].includes(String(loan.status)) ? Number(sched?.interestMinor ?? 0) : 0)
-    const feesOut = Number(loan.outstandingFeesMinor ?? 0) > 0 ? Number(loan.outstandingFeesMinor ?? 0) : (principalOut > 0 && !['settled','written_off','closed'].includes(String(loan.status)) ? Number(sched?.feesMinor ?? 0) : 0)
-    const stored = principalOut + interestOut + feesOut
-    if (['active','in_arrears','restructured','pending_disbursement'].includes(String(loan.status))) cur.outstandingMinor += Math.max(0, stored)
+    const principalMinor = Number(loan.principalMinor ?? 0)
+    const totalInterestMinor = Number(sched?.interestMinor ?? (Number(loan.outstandingInterestMinor ?? 0) || 0))
+    const totalFeesMinor = Number(sched?.feesMinor ?? Number(loan.outstandingFeesMinor ?? 0) ?? 0)
+    const totalRepayableMinor = Number(sched?.totalMinor ?? (principalMinor + totalInterestMinor + totalFeesMinor))
+    const confirmedPaidMinor = paidByLoan.get(String(loan._id)) ?? 0
+    const paymentDueMinor = Math.max(0, totalRepayableMinor - confirmedPaidMinor)
+    const fullyCleared = !['written_off','closed'].includes(String(loan.status)) && totalRepayableMinor > 0 && confirmedPaidMinor >= totalRepayableMinor
     if (!['settled','written_off','closed'].includes(String(loan.status))) cur.loans += 1
+    if (['active','in_arrears','restructured','pending_disbursement'].includes(String(loan.status)) && !fullyCleared) cur.outstandingMinor += paymentDueMinor
     byCustomer.set(key, cur)
   }
   const enriched = data.map((c: any) => ({ ...c, loans: byCustomer.get(String(c._id))?.loans ?? 0, outstandingMinor: byCustomer.get(String(c._id))?.outstandingMinor ?? 0 }))
