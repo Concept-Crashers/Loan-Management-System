@@ -148,7 +148,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
         setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })))
       } else if (path === '/products') {
         const rows = await api.listProducts()
-        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, range: `${formatUGX(item.minAmount)} – ${formatUGX(item.maxAmount)}`, rate: `${item.interestRate}%`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })))
+        setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, range: `${formatUGX(item.minAmount)} – ${formatUGX(item.maxAmount)}`, rate: item.rateLabel || `${item.interestRate}% ${(item as any).interestBasis === 'term' ? 'per term' : (item as any).interestBasis === 'monthly' ? 'per month' : 'p.a.'}`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })))
       } else if (path === '/applications') {
         const rows = await api.listApplications()
         setRemoteRows(rows.map((item) => ({ id: item.id, customer: item.customer, customerId: item.customerId, product: item.product, amount: item.amount, duration: `${item.duration} months`, officer: item.officer, submitted: item.submitted, status: item.status, version: item.version })))

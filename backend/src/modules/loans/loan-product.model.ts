@@ -2,7 +2,10 @@ import { model, Schema } from 'mongoose'
 
 const termsSchema = new Schema({
   minAmountMinor: { type: Number, required: true, min: 0 }, maxAmountMinor: { type: Number, required: true, min: 0 },
-  annualRateBps: { type: Number, required: true, min: 0 }, interestMethod: { type: String, enum: ['flat', 'declining_balance'], required: true },
+  annualRateBps: { type: Number, min: 0 }, // legacy annual rate basis
+  rateBps: { type: Number, min: 0 }, // configured rate in basis points
+  interestBasis: { type: String, enum: ['annual', 'term', 'monthly'], default: 'annual' }, // term = fixed full-term interest (Uganda default for short loans)
+  interestMethod: { type: String, enum: ['flat', 'declining_balance'], required: true },
   repaymentFrequency: { type: String, enum: ['daily', 'weekly', 'biweekly', 'monthly'], required: true },
   minTenureMonths: { type: Number, required: true, min: 1 }, maxTenureMonths: { type: Number, required: true, min: 1 },
   gracePeriodDays: { type: Number, required: true, min: 0 }, fees: { type: [Schema.Types.Mixed], default: [] }, requiredDocuments: { type: [String], default: [] },
@@ -15,3 +18,4 @@ const loanProductSchema = new Schema({
 }, { timestamps: true })
 loanProductSchema.index({ tenantId: 1, code: 1, version: 1 }, { unique: true })
 export const LoanProductModel = model('LoanProduct', loanProductSchema)
+

@@ -106,8 +106,10 @@ function mapProduct(record: BackendProduct): LoanProduct {
     description: `${record.category} loan`,
     minAmount: fromMinor(record.terms?.minAmountMinor),
     maxAmount: fromMinor(record.terms?.maxAmountMinor),
-    interestRate: (record.terms?.annualRateBps ?? 0) / 100,
+    interestRate: Number((record.terms as any)?.rateBps ?? record.terms?.annualRateBps ?? 0) / 100,
     interestMethod: record.terms?.interestMethod ?? 'flat',
+    interestBasis: (record.terms as any)?.interestBasis ?? ((record.terms as any)?.rateBps != null ? 'term' : 'annual'),
+    rateLabel: (() => { const pct = Number((record.terms as any)?.rateBps ?? record.terms?.annualRateBps ?? 0)/100; const b = (record.terms as any)?.interestBasis ?? ((record.terms as any)?.rateBps != null ? 'term':'annual'); return `${pct.toLocaleString()}% ${b==='term'?'per term':b==='monthly'?'per month':'p.a.'}`; })(),
     duration: record.terms?.maxTenureMonths ?? 12,
     frequency: record.terms?.repaymentFrequency === 'daily' ? 'Daily' : record.terms?.repaymentFrequency === 'biweekly' ? 'Bi-weekly' : record.terms?.repaymentFrequency === 'weekly' ? 'Weekly' : 'Monthly',
     gracePeriod: record.terms?.gracePeriodDays ?? 0,
@@ -397,7 +399,7 @@ export const api = {
   updateStaffUser: (id: string, input: { name?: string; email?: string; phone?: string; roles?: string[]; status?: string; branchIds?: string[] }) =>
     apiRequest<{ data?: unknown }>(`/api/v1/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
 
-  updateLoanProduct: (id: string, input: { name?: string; status?: 'draft' | 'active' | 'inactive'; terms?: { minAmountMinor?: number; maxAmountMinor?: number; annualRateBps?: number; interestMethod?: 'flat' | 'declining_balance'; repaymentFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly'; minTenureMonths?: number; maxTenureMonths?: number; gracePeriodDays?: number } }) =>
+  updateLoanProduct: (id: string, input: { name?: string; status?: 'draft' | 'active' | 'inactive'; terms?: { minAmountMinor?: number; maxAmountMinor?: number; annualRateBps?: number; rateBps?: number; interestBasis?: 'annual'|'term'|'monthly'; interestMethod?: 'flat' | 'declining_balance'; repaymentFrequency?: 'daily' | 'weekly' | 'biweekly' | 'monthly'; minTenureMonths?: number; maxTenureMonths?: number; gracePeriodDays?: number } }) =>
     apiRequest(`/api/v1/loan-products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   updateChartAccount: (id: string, input: { name?: string; active?: boolean }) =>
     apiRequest<{ _id?: string }>(`/api/v1/finance/accounts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
@@ -469,7 +471,7 @@ export const api = {
     return mapCustomer(record)
   },
 
-  createProduct: async (input: Partial<LoanProduct> & { code?: string }) => {
+  createProduct: async (input: Partial<LoanProduct> & { code?: string; interestBasis?: 'annual'|'term'|'monthly' }) => {
     const record = await apiRequest<BackendProduct>('/api/v1/loan-products', {
       method: 'POST',
       body: JSON.stringify({
@@ -480,7 +482,9 @@ export const api = {
         terms: {
           minAmountMinor: toMinor(Number(input.minAmount ?? 0)),
           maxAmountMinor: toMinor(Number(input.maxAmount ?? 0)),
+          rateBps: Math.round(Number(input.interestRate ?? 0) * 100),
           annualRateBps: Math.round(Number(input.interestRate ?? 0) * 100),
+          interestBasis: (input as any).interestBasis ?? 'term',
           interestMethod: /flat/i.test(input.interestMethod ?? '') ? 'flat' : 'declining_balance',
           repaymentFrequency: input.frequency === 'Daily' ? 'daily' : input.frequency === 'Weekly' ? 'weekly' : input.frequency === 'Bi-weekly' ? 'biweekly' : 'monthly',
           minTenureMonths: 1,

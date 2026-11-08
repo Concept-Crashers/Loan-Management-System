@@ -8,11 +8,13 @@ import { LoanProductModel } from './loan-product.model.js'
 
 const router = Router()
 const terms = z.object({
-  minAmountMinor: z.number().int().nonnegative(), maxAmountMinor: z.number().int().positive(), annualRateBps: z.number().int().nonnegative(),
+  minAmountMinor: z.number().int().nonnegative(), maxAmountMinor: z.number().int().positive(),
+  annualRateBps: z.number().int().nonnegative().optional(), rateBps: z.number().int().nonnegative().optional(),
+  interestBasis: z.enum(['annual', 'term', 'monthly']).optional(),
   interestMethod: z.enum(['flat', 'declining_balance']), repaymentFrequency: z.enum(['daily','weekly', 'biweekly', 'monthly']),
   minTenureMonths: z.number().int().positive(), maxTenureMonths: z.number().int().positive(), gracePeriodDays: z.number().int().nonnegative(),
   fees: z.array(z.record(z.string(), z.unknown())).default([]), requiredDocuments: z.array(z.string()).default([]),
-})
+}).refine((v) => Number.isFinite(Number(v.rateBps ?? v.annualRateBps)), { message: 'Interest rate is required.' })
 const input = z.object({ code: z.string().min(2), name: z.string().min(2), category: z.enum(['individual', 'group']), terms, approvalLimitMinor: z.number().int().nonnegative() })
 const updateInput = z.object({ status: z.enum(['draft', 'active', 'inactive']).optional(), name: z.string().min(2).optional(), category: z.enum(['individual', 'group']).optional(), terms: terms.optional(), approvalLimitMinor: z.number().int().nonnegative().optional(), createNewVersion: z.boolean().optional() })
 
@@ -61,3 +63,4 @@ router.patch('/:id', requirePermission('loans.products.create'), asyncRoute(asyn
   response.json({ success: true, message: changingTerms ? 'Loan product updated successfully' : `Loan product ${parsed.status === 'active' ? 'activated' : parsed.status === 'inactive' ? 'deactivated' : 'updated'} successfully`, data: product })
 }))
 export default router
+

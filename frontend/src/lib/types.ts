@@ -29,6 +29,7 @@ export interface Customer {
 
 export interface LoanProduct {
   id: string
+  /** MongoDB record id for API mutations (falls back to id). */
   recordId?: string
   name: string
   description: string
@@ -36,6 +37,8 @@ export interface LoanProduct {
   maxAmount: number
   interestRate: number
   interestMethod?: string
+  interestBasis?: 'annual' | 'term' | 'monthly'
+  rateLabel?: string
   duration: number
   frequency: 'Daily' | 'Weekly' | 'Bi-weekly' | 'Monthly'
   gracePeriod?: number

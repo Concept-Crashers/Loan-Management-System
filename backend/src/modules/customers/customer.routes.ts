@@ -61,7 +61,8 @@ router.get('/', requirePermission('customers.view'), asyncRoute(async (request: 
     const storedFees = Number(loan.outstandingFeesMinor ?? 0)
     const snap = (loan.productSnapshot ?? {}) as any
     const tenureMonths = Number(snap.maxTenureMonths ?? snap.minTenureMonths ?? 1) || 1
-    const computedInterest = computeTermInterestMinor(principalMinor, { annualRateBps: Number(snap.annualRateBps ?? 0), interestMethod: snap.interestMethod === 'declining_balance' ? 'declining_balance' : 'flat' }, tenureMonths)
+    const computedInterest = computeTermInterestMinor(principalMinor, { ...snap, annualRateBps: Number(snap.annualRateBps ?? 0), rateBps: snap.rateBps != null ? Number(snap.rateBps) : undefined, interestBasis: snap.interestBasis, interestMethod: snap.interestMethod === 'declining_balance' ? 'declining_balance' : 'flat' } as any, tenureMonths)
+
     const computedFees = computeTermFeeMinor(snap)
     const totalInterestMinor = Number(sched?.interestMinor ?? (storedInterest > 0 ? storedInterest : computedInterest))
     const totalFeesMinor = Number(sched?.feesMinor ?? (storedFees > 0 ? storedFees : computedFees))
