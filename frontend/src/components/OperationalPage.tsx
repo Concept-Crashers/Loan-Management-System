@@ -713,7 +713,7 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             <Field label="Email" required><Input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} placeholder="staff@example.com" /></Field>
             <Field label="Temporary password" required className="field-span-2">
               <div style={{ position: 'relative' }}>
-                <Input type={staffShowPassword ? 'text' : 'password'} value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} placeholder="Min 12 chars, upper/lower/number" style={{ paddingRight: 34 }} />
+                <Input type={staffShowPassword ? 'text' : 'password'} value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} placeholder="Min 8 characters (upper, lower, number)" style={{ paddingRight: 34 }} />
                 <button type="button" onClick={() => setStaffShowPassword((v) => !v)} aria-label={staffShowPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', color: '#7f8da0', display: 'grid', placeItems: 'center', padding: 2, cursor: 'pointer' }}>
                   {staffShowPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -721,14 +721,14 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             </Field>
             <Field label="Phone" hint="Select a country calling code (default +256) and enter the local number."><PhoneNumberInput value={staffForm.phone} onChange={(phone) => setStaffForm({ ...staffForm, phone })} /></Field>
             <Field label="Role">
-              <Select value={staffForm.roles} onChange={(e) => setStaffForm({ ...staffForm, roles: e.target.value })}>
+              <select className="lf-input" value={staffForm.roles} onChange={(e) => setStaffForm({ ...staffForm, roles: e.target.value })}>
                 <option value="loan_officer">Loan officer</option>
                 <option value="approver">Approver</option>
                 <option value="manager">Manager</option>
                 <option value="finance">Finance / accounting</option>
                 <option value="collections">Collections</option>
                 <option value="admin">Admin</option>
-              </Select>
+              </select>
             </Field>
           </div>
           <div className="dialog-actions">
@@ -745,14 +745,14 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             <Field label="Email"><Input type="email" value={editStaffForm.email} onChange={(e) => setEditStaffForm({ ...editStaffForm, email: e.target.value })} /></Field>
             <Field label="Phone" hint="Select a country calling code and enter the local number."><PhoneNumberInput value={editStaffForm.phone} onChange={(phone) => setEditStaffForm({ ...editStaffForm, phone })} /></Field>
             <Field label="Role">
-              <Select value={editStaffForm.roles} onChange={(e) => setEditStaffForm({ ...editStaffForm, roles: e.target.value })}>
+              <select className="lf-input" value={editStaffForm.roles} onChange={(e) => setEditStaffForm({ ...editStaffForm, roles: e.target.value })}>
                 <option value="loan_officer">Loan officer</option>
                 <option value="approver">Approver</option>
                 <option value="manager">Manager</option>
                 <option value="finance">Finance / accounting</option>
                 <option value="collections">Collections</option>
                 <option value="admin">Admin</option>
-              </Select>
+              </select>
             </Field>
           </div>
           <div className="dialog-actions">
