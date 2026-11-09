@@ -11,6 +11,7 @@ import { formatUGX } from '../../lib/format'
 import { api } from '../../lib/services'
 
 const schema = z.object({
+  branchId: z.string().min(1, 'Select the branch for this application.'),
   customerId: z.string().min(1, 'Choose a borrower.'), product: z.string().min(1, 'Choose a loan product.'),
   amount: z.coerce.number().min(100000, 'Enter at least UGX 100,000.'), duration: z.coerce.number().min(1, 'Choose a duration.'),
   frequency: z.string().min(1, 'Choose a repayment frequency.'), purpose: z.string().min(5, 'Add a short loan purpose.'),
@@ -18,30 +19,32 @@ const schema = z.object({
 })
 type FormInput = z.input<typeof schema>
 type FormValues = z.output<typeof schema>
-const steps = [{ title: 'Borrower', caption: 'Select a customer' }, { title: 'Loan details', caption: 'Request & purpose' }, { title: 'Assessment', caption: 'Income & documents' }, { title: 'Review', caption: 'Terms disclosure' }]
+const steps = [{ title: 'Borrower', caption: 'Select a customer' }, { title: 'Branch', caption: 'Assign the branch' }, { title: 'Loan details', caption: 'Request & purpose' }, { title: 'Assessment', caption: 'Income & documents' }, { title: 'Review', caption: 'Terms disclosure' }]
 
 export function ApplicationWizard() {
   const [step, setStep] = useState(0)
   const [files, setFiles] = useState<string[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [products, setProducts] = useState<LoanProduct[]>([])
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; district: string }>>([])
   const [loadingRef, setLoadingRef] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { control, register, watch, trigger, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { customerId: '', product: '', amount: 0, duration: 12, frequency: 'Daily', purpose: '', income: 0, obligations: 0, termsConfirmed: false } })
-  const selectedId = watch('customerId'), selectedProduct = watch('product')
+  const { control, register, watch, trigger, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormInput, unknown, FormValues>({ resolver: zodResolver(schema), defaultValues: { branchId: '', customerId: '', product: '', amount: 0, duration: 12, frequency: 'Daily', purpose: '', income: 0, obligations: 0, termsConfirmed: false } })
+  const selectedId = watch('customerId'), selectedProduct = watch('product'), selectedBranch = watch('branchId')
   const borrower = customers.find((person) => (person.recordId ?? person.id) === selectedId)
   const product = products.find((item) => (item.recordId ?? item.id) === selectedProduct)
   const amount = watch('amount')
-  const stepFields: (keyof FormInput)[][] = [['customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
+  const stepFields: (keyof FormInput)[][] = [['branchId', 'customerId', 'product'], ['amount', 'duration', 'frequency', 'purpose'], ['income', 'obligations'], ['termsConfirmed']]
   const activeProducts = useMemo(() => products.filter((item) => item.active), [products])
   const customerOptions = useMemo(() => customers.map((p) => ({ value: p.recordId ?? p.id, label: `${p.name} · ${p.id}` })), [customers])
+  const branchOptions = useMemo(() => branches.map((b) => ({ value: b.id, label: `${b.name}${b.district ? ` · ${b.district}` : ''}` })), [branches])
   const productOptions = useMemo(() => activeProducts.map((p) => ({ value: p.recordId ?? p.id, label: `${p.name} · ${formatUGX(p.minAmount)}–${formatUGX(p.maxAmount)} · ${p.duration} mo` })), [activeProducts])
 
   async function loadRefData() {
     setLoadingRef(true)
     setLoadError(null)
-    const [cRes, pRes] = await Promise.allSettled([api.listCustomers(), api.listProducts()])
+    const [cRes, pRes, bRes] = await Promise.allSettled([api.listCustomers(), api.listProducts(), api.listBranches()])
     if (cRes.status === 'fulfilled') setCustomers(cRes.value); else setLoadError(cRes.reason instanceof Error ? cRes.reason.message : 'Customers could not be loaded.')
     if (pRes.status === 'fulfilled') {
       setProducts(pRes.value)
@@ -51,6 +54,8 @@ export function ApplicationWizard() {
       setLoadError((e) => e ?? (pRes.reason instanceof Error ? pRes.reason.message : 'Loan products could not be loaded.'))
       toast.error(pRes.reason instanceof Error ? pRes.reason.message : 'Failed to load loan products.')
     }
+    if (bRes.status === 'fulfilled') setBranches((bRes.value ?? []).map((b: any) => ({ id: String(b.branchId ?? b.id ?? ''), name: String(b.name ?? ''), district: String(b.district ?? '') })))
+    else setLoadError((e) => e ?? (bRes.reason instanceof Error ? bRes.reason.message : 'Branches could not be loaded.'))
     setLoadingRef(false)
   }
 
@@ -68,7 +73,7 @@ export function ApplicationWizard() {
       const selected = products.find((item) => (item.recordId ?? item.id) === values.product)
       if (!selected) throw new Error('Selected loan product could not be resolved. Reload products and try again.')
       if (!selected.active) throw new Error('Selected loan product is not active. Choose an active product.')
-      const record = await api.submitApplication({ customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
+      const record = await api.submitApplication({ branchId: values.branchId, customerId: values.customerId, productId: values.product, amount: values.amount, duration: values.duration, income: values.income, obligations: values.obligations, purpose: values.purpose })
       const ref = (record as any)?.id ?? (record as any)?._id ?? (record as any)?.applicationId ?? (record as any)?.data?.id ?? (record as any)?.data?._id
       toast.success('Application submitted for review', { description: ref ? `Reference ${String(ref)} · server decision pending` : 'Server decision pending' })
       navigate(ref ? `/applications/${encodeURIComponent(String(ref))}` : '/applications')
