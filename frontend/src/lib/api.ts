@@ -339,13 +339,7 @@ export async function downloadAuthenticated(path: string, filename?: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
-export function exportDisbursementReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/disbursements/${encodeURIComponent(id)}/receipt`) }
-export function exportPaymentReceipt(id: string) { return downloadAuthenticated(`/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`) }
 export function exportLoanStatementCsv(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, `loan-statement-${id}.csv`) }
-export function exportLoanStatementPdf(id: string) { return downloadAuthenticated(`/api/v1/finance/loans/${encodeURIComponent(id)}/statement/pdf`) }
-export function shareDisbursementReceipt(id: string) { return shareDocument({ path: `/api/v1/finance/disbursements/${encodeURIComponent(id)}/receipt`, filename: `disbursement-receipt-${id}.html`, title: `Disbursement receipt ${id}`, text: `Disbursement receipt ${id} from Trust Loans.` }) }
-export function sharePaymentReceipt(id: string) { return shareDocument({ path: `/api/v1/finance/payments/${encodeURIComponent(id)}/receipt`, filename: `payment-receipt-${id}.html`, title: `Payment receipt ${id}`, text: `Payment receipt ${id} from Trust Loans.` }) }
-export function shareLoanStatementPdf(id: string) { return shareDocument({ path: `/api/v1/finance/loans/${encodeURIComponent(id)}/statement/pdf`, filename: `loan-statement-${id}.html`, title: `Loan statement ${id}`, text: `Loan statement ${id} from Trust Loans. Use Print / Save as PDF, then attach the PDF.` }) }
 export function shareLoanStatementCsv(id: string) { return shareDocument({ path: `/api/v1/finance/loans/${encodeURIComponent(id)}/statement/export`, filename: `loan-statement-${id}.csv`, title: `Loan statement ${id} (CSV)`, text: `Loan statement ${id} (CSV) from Trust Loans.` }) }
 
 export async function uploadToCloudinary(signature: { cloudName: string; apiKey: string; timestamp: number; folder: string; type: string; signature: string }, file: File) {
