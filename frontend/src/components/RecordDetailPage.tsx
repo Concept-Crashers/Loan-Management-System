@@ -93,13 +93,16 @@ export function RecordDetailPage() {
     const repayment: Repayment = {
       id: String(record._id ?? id),
       customer: String((record as any).customerName ?? (record as any).customer ?? record.customerId ?? '—'),
-      customerId: String(record.customerId ?? ''),
-      loan: String(record.loanAccountId ?? record.loan ?? '—'),
+      customerId: String((record as any).customerNumber ?? record.customerId ?? (record as any).customerId ?? ''),
+      loan: String((record as any).loanReference ?? record.loanAccountId ?? record.loan ?? '—'),
+      loanReference: String((record as any).loanReference ?? record.loanAccountId ?? record.loan ?? ''),
       amount: amountMinor ? amountMinor / 100 : Number(record.amount ?? 0),
       method: (String(record.method ?? record.paymentMethod ?? 'Cash') as PaymentMethod),
       reference: String(record.reference ?? '—'),
+      customerPhone: String((record as any).customerPhone ?? (record as any).phone ?? ''),
       date: String(record.confirmedAt ?? record.createdAt ?? record.paymentDate ?? new Date().toISOString()),
       receivedBy: String((record as any).receivedByName ?? record.confirmedBy ?? record.receivedBy ?? '—'),
+      receivedByName: String((record as any).receivedByName ?? record.confirmedBy ?? record.receivedBy ?? '—'),
       status: String(record.status ?? '') === 'confirmed' ? 'Successful' : String(record.status ?? '') === 'reversed' ? 'Reversed' : 'Pending review',
     }
     const filename = `payment-receipt-${String(record.reference ?? record._id ?? id)}.pdf`
@@ -114,11 +117,14 @@ export function RecordDetailPage() {
       id: String(record._id ?? id),
       reference: String(record.reference ?? ''),
       customer: String((record as any).customerName ?? record.customerId ?? '—'),
-      loanRef: String(record.loanAccountId ?? '—'),
+      customerNumber: String((record as any).customerNumber ?? record.customerId ?? ''),
+      loanRef: String((record as any).loanReference ?? record.loanAccountId ?? '—'),
       amount: amountMinor ? amountMinor / 100 : Number(record.amount ?? 0),
       method: String(record.method ?? 'Cash'),
       status: String(record.status ?? '—'),
+      authorizedByName: String((record as any).authorizedByName ?? record.authorizedBy ?? '—'),
       authorizedAt: String(record.authorizedAt ?? record.createdAt ?? ''),
+      completedByName: String((record as any).completedByName ?? record.completedBy ?? ''),
       completedAt: String(record.completedAt ?? ''),
     }
     const filename = `disbursement-receipt-${String(record.reference ?? record._id ?? id)}.pdf`

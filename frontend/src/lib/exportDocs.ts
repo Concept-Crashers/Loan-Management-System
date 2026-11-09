@@ -487,16 +487,18 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   }
 
   infoRow('Receipt Date', fmtDate(repayment.date || now.toISOString()), colLeft, y)
-  infoRow('Loan Reference', repayment.loan || '—', colRight, y)
+  infoRow('Loan Reference', repayment.loanReference || repayment.loan || '—', colRight, y)
   y += rowH
   infoRow('Payment Method', repayment.method || '—', colLeft, y)
   infoRow('Customer Name', repayment.customer || '—', colRight, y)
   y += rowH
-  infoRow('Received By', repayment.receivedBy || '—', colLeft, y)
+  infoRow('Received By', repayment.receivedByName || repayment.receivedBy || '—', colLeft, y)
   infoRow('Customer ID', repayment.customerId || '—', colRight, y)
   y += rowH
-  infoRow('Reference', repayment.reference || 'N/A (Cash)', colLeft, y)
-  infoRow('Status', repayment.status || '—', colRight, y)
+  infoRow('Customer Phone', repayment.customerPhone || '—', colLeft, y)
+  infoRow('Reference', repayment.reference || 'N/A (Cash)', colRight, y)
+  y += rowH
+  infoRow('Status', repayment.status || '—', colLeft, y)
 
   y += 14
 
@@ -601,7 +603,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
 }
 
 export interface DisbursementReceiptData {
-  disbursement: { id: string; reference?: string; customer: string; loanRef: string; amount: number; method: string; status: string; authorizedAt?: string; completedAt?: string }
+  disbursement: { id: string; reference?: string; customer: string; customerNumber?: string; loanRef: string; amount: number; method: string; status: string; authorizedAt?: string; completedAt?: string; authorizedByName?: string; completedByName?: string }
   org: OrgInfo
   save?: boolean
   filename?: string
@@ -633,7 +635,7 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180,210,245)
   doc.text(`Receipt No: ${receiptNo}`,W/2,y+13,{align:'center'})
   y+=24
-  autoTable(doc, { head: [['Field','Value']], body: [['Customer',disbursement.customer],['Loan Account',disbursement.loanRef],['Reference',disbursement.reference||disbursement.id],['Method',disbursement.method],['Status',disbursement.status],['Authorized',disbursement.authorizedAt?fmtDate(disbursement.authorizedAt):'—'],['Completed',disbursement.completedAt?fmtDate(disbursement.completedAt):'—']], startY:y, theme:'grid', headStyles:{fillColor:NAVY,textColor:WHITE}, margin:{left:20,right:20}, tableLineColor:BORDER })
+  autoTable(doc, { head: [['Field','Value']], body: [['Customer',disbursement.customer],['Customer ID',disbursement.customerNumber||'—'],['Loan Account',disbursement.loanRef],['Reference',disbursement.reference||disbursement.id],['Method',disbursement.method],['Status',disbursement.status],['Authorized By',disbursement.authorizedByName||'—'],['Authorized',disbursement.authorizedAt?fmtDate(disbursement.authorizedAt):'—'],['Completed By',disbursement.completedByName||'—'],['Completed',disbursement.completedAt?fmtDate(disbursement.completedAt):'—']], startY:y, theme:'grid', headStyles:{fillColor:NAVY,textColor:WHITE}, margin:{left:20,right:20}, tableLineColor:BORDER })
   y=((doc as any).lastAutoTable?.finalY??y+30)+8
   doc.setFillColor(240,247,255); doc.setDrawColor(...NAVY_LIGHT); doc.roundedRect(20,y,W-40,24,4,4,'FD')
   doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY_LIGHT); doc.text('AMOUNT RELEASED',W/2,y+8,{align:'center'})

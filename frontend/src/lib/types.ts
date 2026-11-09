@@ -92,6 +92,9 @@ export interface Repayment {
   reference: string
   date: string
   receivedBy: string
+  receivedByName?: string
+  customerPhone?: string
+  loanReference?: string
   status: 'Successful' | 'Pending review' | 'Reversed'
 }
 
