@@ -76,6 +76,7 @@ export interface LoanAccount {
   paid: number
   outstanding: number
   interest: number
+  fees?: number
   start: string
   maturity: string
   status: LoanStatus
@@ -95,6 +96,7 @@ export interface Repayment {
   receivedByName?: string
   customerPhone?: string
   loanReference?: string
+  allocations?: Array<{ principalMinor?: number; interestMinor?: number; feesMinor?: number }>
   status: 'Successful' | 'Pending review' | 'Reversed'
 }
 
@@ -104,7 +106,9 @@ export interface ScheduleInstallment {
   loan: string
   due: string
   expected: number
+  principal?: number
   interest?: number
+  fees?: number
   paid: number
   status: 'Paid' | 'Due soon' | 'Due today' | 'Overdue' | 'Upcoming'
   officer: string

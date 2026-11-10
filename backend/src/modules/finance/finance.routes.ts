@@ -80,7 +80,10 @@ async function openPeriod(tenantId: string, branchId: string, at = new Date()) {
 }
 router.get('/loans/:id', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+    .populate('customerId', 'name customerNumber phone address email')
+    .populate({ path: 'applicationId', select: 'productId tenureMonths', populate: { path: 'productId', select: 'name' } })
+    .lean()
   if (!loan) throw new HttpError(404, 'LOAN_ACCOUNT_NOT_FOUND', 'Loan account was not found.')
   assertBranchAccess(request, loan.branchId)
   response.json({ success: true, message: 'Loan account retrieved successfully', data: loan })
@@ -88,7 +91,10 @@ router.get('/loans/:id', requirePermission('loans.accounts.view'), asyncRoute(as
 
 router.get('/loans/:id/statement', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean()
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+    .populate('customerId', 'name customerNumber phone address email')
+    .populate({ path: 'applicationId', select: 'productId tenureMonths', populate: { path: 'productId', select: 'name' } })
+    .lean()
   if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
   assertBranchAccess(request, loan.branchId)
   const [schedule, payments, disbursements] = await Promise.all([
@@ -97,10 +103,11 @@ router.get('/loans/:id/statement', requirePermission('loans.accounts.view'), asy
     DisbursementModel.find({ tenantId: user.tenantId, loanAccountId: loan._id }).sort({ createdAt: 1 }).lean(),
   ])
   const totalInterestMinor = (schedule as any[]).reduce((s, r) => s + Number(r.interestMinor ?? 0), 0) || loanInterestTotalMinor(loan as any, schedule as any[])
+  const totalFeesMinor = (schedule as any[]).reduce((s, r) => s + Number(r.feesMinor ?? 0), 0) || loanFeeTotalMinor(loan as any, schedule as any[])
   const totalRepayableMinor = (schedule as any[]).reduce((s, r) => s + Number(r.totalMinor ?? 0), 0) || (Number(loan.principalMinor ?? 0) + totalInterestMinor + loanFeeTotalMinor(loan as any, schedule as any[]))
   const confirmedPaidMinor = payments.filter((p: any) => p.status === 'confirmed').reduce((s, p: any) => s + Number(p.amountMinor ?? 0), 0)
   const paymentDueMinor = Math.max(0, totalRepayableMinor - confirmedPaidMinor)
-  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), confirmedPaidMinor, totalInterestMinor, totalRepayableMinor, paymentDueMinor } } })
+  response.json({ success: true, message: 'Loan statement retrieved successfully', data: { loan, schedule, payments, disbursements, summary: { principalMinor: Number(loan.principalMinor ?? 0), confirmedPaidMinor, totalInterestMinor, totalFeesMinor, totalRepayableMinor, paymentDueMinor } } })
 }))
 router.get('/payments/:id', requirePermission('repayments.capture'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
@@ -641,7 +648,10 @@ router.get('/payments/:id/receipt', requirePermission('repayments.capture'), asy
 
 router.get('/loans/:id/statement/pdf', requirePermission('loans.accounts.view'), asyncRoute(async (request: AuthRequest, response) => {
   const user = currentUser(request)
-  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId }).populate('customerId', 'name customerNumber phone').lean() as any
+  const loan = await LoanAccountModel.findOne({ _id: request.params.id, tenantId: user.tenantId })
+    .populate('customerId', 'name customerNumber phone address email')
+    .populate({ path: 'applicationId', select: 'productId tenureMonths', populate: { path: 'productId', select: 'name' } })
+    .lean() as any
   if (!loan) throw new HttpError(404, 'LOAN_NOT_FOUND', 'Loan account was not found.')
   assertBranchAccess(request, loan.branchId)
   const [schedule, payments, disbursements] = await Promise.all([

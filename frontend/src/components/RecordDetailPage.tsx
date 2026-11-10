@@ -8,7 +8,7 @@ import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitiv
 import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, shareBlob, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
-import type { LoanAccount, PaymentMethod, Repayment } from '../lib/types'
+import type { LoanAccount, PaymentMethod, Repayment, ScheduleInstallment } from '../lib/types'
 import type { RootState } from '../store/store'
 
 const labels: Record<string, { endpoint: 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements' | 'branches'; entity: string; back: string; title: string; editPath?: (id: string) => string }> = {
@@ -100,6 +100,7 @@ export function RecordDetailPage() {
       method: (String(record.method ?? record.paymentMethod ?? 'Cash') as PaymentMethod),
       reference: String(record.reference ?? '—'),
       customerPhone: String((record as any).customerPhone ?? (record as any).phone ?? ''),
+      allocations: Array.isArray(record.allocations) ? record.allocations as Repayment['allocations'] : [],
       date: String(record.confirmedAt ?? record.createdAt ?? record.paymentDate ?? new Date().toISOString()),
       receivedBy: String((record as any).receivedByName ?? record.confirmedBy ?? record.receivedBy ?? '—'),
       receivedByName: String((record as any).receivedByName ?? record.confirmedBy ?? record.receivedBy ?? '—'),
@@ -134,20 +135,31 @@ export function RecordDetailPage() {
 
   async function downloadStatementPDF(save = true) {
     if (!record || !statement) throw new Error('Loan statement is not loaded yet.')
+    const rawLoan = (statement.loan && typeof statement.loan === 'object' ? statement.loan : record) as Record<string, any>
+    const customer = rawLoan.customerId && typeof rawLoan.customerId === 'object' ? rawLoan.customerId as Record<string, unknown> : {}
+    const application = rawLoan.applicationId && typeof rawLoan.applicationId === 'object' ? rawLoan.applicationId as Record<string, any> : {}
+    const product = application.productId && typeof application.productId === 'object' ? application.productId as Record<string, unknown> : {}
+    const schedule = (statement.schedule as Array<Record<string, any>>) || []
+    const disbursements = (statement.disbursements as Array<Record<string, any>>) || []
+    const completedDisbursements = disbursements.filter((entry) => entry.status === 'completed')
+    const completedAmountMinor = completedDisbursements.reduce((sum, entry) => sum + Number(entry.amountMinor ?? 0), 0)
+    const nextInstallment = schedule.find((entry) => ['pending', 'partially_paid', 'overdue'].includes(String(entry.status)))
+    const summary = (statement.summary as Record<string, number>) || {}
     const loan: LoanAccount = {
-      ref: String(record.reference ?? record._id ?? id),
-      customer: String((record as any).customerName ?? record.customerId ?? '—'),
-      customerId: String(record.customerId ?? ''),
-      product: String((record as any).productName ?? record.loanProductId ?? 'Loan'),
-      principal: Number(record.principalMinor ?? 0) / 100,
-      disbursed: Number(((record as any).disbursedAmountMinor ?? record.principalMinor ?? 0)) / 100,
-      paid: Number((statement.summary as any)?.confirmedPaidMinor ?? 0) / 100,
-      outstanding: Number((statement.summary as any)?.paymentDueMinor ?? 0) / 100,
-      interest: Number((statement.summary as any)?.totalInterestMinor ?? 0) / 100,
-      start: String((record as any).disbursedAt ?? record.createdAt ?? ''),
-      maturity: String((record as any).maturityDate ?? ''),
-      status: String(record.status ?? 'Active') as LoanAccount['status'],
-      nextDue: String((statement as any).nextDueDate ?? ''),
+      ref: String(rawLoan._id ?? record._id ?? id),
+      customer: String(customer.name ?? (statement as any).customerName ?? customer.customerNumber ?? '—'),
+      customerId: String(customer.customerNumber ?? customer._id ?? ''),
+      product: String(product.name ?? rawLoan.productSnapshot?.name ?? rawLoan.productSnapshot?.productName ?? 'Loan'),
+      principal: Number(rawLoan.principalMinor ?? 0) / 100,
+      disbursed: (completedAmountMinor || Number(rawLoan.principalMinor ?? 0)) / 100,
+      paid: Number(summary.confirmedPaidMinor ?? 0) / 100,
+      outstanding: Number(summary.paymentDueMinor ?? 0) / 100,
+      interest: Number(summary.totalInterestMinor ?? 0) / 100,
+      fees: Number(summary.totalFeesMinor ?? 0) / 100,
+      start: String(completedDisbursements[0]?.completedAt ?? rawLoan.disbursedAt ?? rawLoan.createdAt ?? ''),
+      maturity: String(rawLoan.maturityDate ?? schedule.at(-1)?.dueDate ?? ''),
+      status: String(rawLoan.status ?? 'Active') as LoanAccount['status'],
+      nextDue: String(nextInstallment?.dueDate ?? ''),
     }
     const repayments: Repayment[] = (((statement.payments as any[]) || []).map((p) => ({
       id: String(p._id ?? p.reference ?? ''),
@@ -159,10 +171,41 @@ export function RecordDetailPage() {
       reference: String(p.reference ?? '—'),
       date: String(p.createdAt ?? ''),
       receivedBy: '—',
+      allocations: Array.isArray(p.allocations) ? p.allocations : [],
       status: p.status === 'confirmed' ? 'Successful' : p.status === 'reversed' ? 'Reversed' : 'Pending review',
     })))
     const filename = `loan-statement-${loan.ref}.pdf`
-    const blob = await generateLoanStatementPDF({ loan, repayments, org, save, filename })
+    const blob = await generateLoanStatementPDF({
+      loan,
+      repayments,
+      schedule: schedule.map((entry) => ({
+        id: String(entry._id ?? entry.installmentNumber),
+        customer: loan.customer,
+        loan: loan.ref,
+        due: String(entry.dueDate ?? ''),
+        expected: Number(entry.totalMinor ?? 0) / 100,
+        principal: Number(entry.principalMinor ?? 0) / 100,
+        interest: Number(entry.interestMinor ?? 0) / 100,
+        fees: Number(entry.feesMinor ?? 0) / 100,
+        paid: Number(entry.paidMinor ?? 0) / 100,
+        status: String(entry.status ?? 'Upcoming') as ScheduleInstallment['status'],
+      })),
+      disbursements: disbursements.map((entry) => ({
+        date: String(entry.completedAt ?? entry.authorizedAt ?? entry.createdAt ?? ''),
+        reference: String(entry.reference ?? entry.idempotencyKey ?? entry._id ?? ''),
+        amount: Number(entry.amountMinor ?? 0) / 100,
+        method: String(entry.method ?? ''),
+        status: String(entry.status ?? '—'),
+      })),
+      org,
+      customerInfo: {
+        address: String(customer.address ?? ''),
+        phone: String(customer.phone ?? (statement as any).customerPhone ?? ''),
+        email: String(customer.email ?? ''),
+      },
+      save,
+      filename,
+    })
     if (!save) return blob as Blob
   }
 
@@ -299,11 +342,11 @@ export function RecordDetailPage() {
 
     {segment === 'loans' && record && <Card className="detail-info-card"><div className="detail-card-head"><h2>Loan actions</h2></div><div className="dialog-actions" style={{justifyContent:'flex-start',flexWrap:'wrap'}}>{String(record.status ?? '') === 'pending_disbursement' && <Button onClick={() => navigate(`/disbursements/new?mode=authorize&loan=${encodeURIComponent(String(record._id ?? id))}`)}>Authorize disbursement</Button>}<Button variant="outline" onClick={() => setAction({ title: 'Apply reschedule', desc: 'Mutates pending schedule due dates and is audited. Include count and unit, e.g. "7 days" or "1 month".', label: 'Apply reschedule', danger: true, run: async (reason) => { const day = reason.match(/(\d+)\s*day/i); const month = reason.match(/(\d+)\s*month/i); const unit = day ? 'day' : 'month'; const count = Number((day||month||[])[1]||1); await api.applyLoanPlan(String(record._id ?? id), 'reschedule', reason, count, unit as any); toast.success(`Schedule rescheduled by ${count} ${unit}${count===1?'':'s'}`); await load() } })}>Apply reschedule</Button><Button variant="outline" onClick={() => setAction({ title: 'Apply payment plan', desc: 'Replaces pending installments with equal planned amounts and is audited. Include count/unit, e.g. "30 daily installments".', label: 'Apply payment plan', danger: true, run: async (reason) => { const day = reason.match(/(\d+)\s*daily|(\d+)\s*day/i); const month = reason.match(/(\d+)\s*month/i); const unit = month ? 'month' : 'day'; const count = Number((month||day||[]).slice(1).find(Boolean)||(month?3:30)); await api.applyLoanPlan(String(record._id ?? id), 'payment_plan', reason, count, unit as any); toast.success(`Payment plan applied: ${count} ${unit}${count===1?'':'s'}`); await load() } })}>Apply payment plan</Button><Button variant="outline" onClick={() => setAction({ title: 'Restructure loan', desc: 'Record a restructure lifecycle event with an audit reason.', label: 'Restructure', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'restructure', reason); toast.success('Loan restructured'); await load() } })}>Restructure</Button><Button variant="outline" onClick={() => setAction({ title: 'Refinance loan', desc: 'Record refinancing with an audit reason.', label: 'Refinance', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'refinance', reason); toast.success('Loan refinanced'); await load() } })}>Refinance</Button><Button variant="outline" onClick={() => setAction({ title: 'Apply penalty', desc: 'Apply a penalty/lifecycle event with an audit reason.', label: 'Apply penalty', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'penalty', reason); toast.success('Penalty applied'); await load() } })}>Apply penalty</Button><Button variant="outline" onClick={() => setAction({ title: 'Settle loan', desc: 'Mark this loan as settled with an audit reason.', label: 'Settle loan', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'settle', reason); toast.success('Loan settled'); await load() } })}>Settle loan</Button><Button variant="danger" onClick={() => setAction({ title: 'Write off loan', desc: 'Write off this loan with an audit reason. This is a significant accounting action.', label: 'Write off loan', danger: true, run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'write_off', reason); toast.success('Loan written off'); await load() } })}>Write off</Button></div></Card>}
     {segment === 'loans' && statement && <Card className="detail-info-card"><div className="detail-card-head"><h2><FileText size={16} /> Loan statement</h2></div>
-      <div className="info-grid">{(() => { const rows = ((statement.schedule as any[])||[]); const totalInterestMinor = Number((statement.summary as any)?.totalInterestMinor ?? rows.reduce((s,r)=>s+Number(r.interestMinor||0),0)); const totalRepayableMinor = Number((statement.summary as any)?.totalRepayableMinor ?? rows.reduce((s,r)=>s+Number(r.totalMinor||0),0)); const paidMinor = Number((statement.summary as any)?.confirmedPaidMinor ?? 0); const paymentDueMinor = Number((statement.summary as any)?.paymentDueMinor ?? Math.max(0, totalRepayableMinor - paidMinor)); return [['Principal', ugx((statement.summary as any)?.principalMinor)], ['Total interest', ugx(totalInterestMinor)], ['Total repayable', ugx(totalRepayableMinor)], ['Confirmed paid', ugx(paidMinor)], ['Payment due', ugx(paymentDueMinor)]] })().map(([k,v]) => <div key={String(k)}><span>{k}</span><strong>{v as string}</strong></div>)}</div>
+      <div className="info-grid">{(() => { const rows = ((statement.schedule as any[])||[]); const totalInterestMinor = Number((statement.summary as any)?.totalInterestMinor ?? rows.reduce((s,r)=>s+Number(r.interestMinor||0),0)); const totalFeesMinor = Number((statement.summary as any)?.totalFeesMinor ?? rows.reduce((s,r)=>s+Number(r.feesMinor||0),0)); const totalRepayableMinor = Number((statement.summary as any)?.totalRepayableMinor ?? rows.reduce((s,r)=>s+Number(r.totalMinor||0),0)); const paidMinor = Number((statement.summary as any)?.confirmedPaidMinor ?? 0); const paymentDueMinor = Number((statement.summary as any)?.paymentDueMinor ?? Math.max(0, totalRepayableMinor - paidMinor)); return [['Principal', ugx((statement.summary as any)?.principalMinor)], ['Total interest', ugx(totalInterestMinor)], ['Total fees', ugx(totalFeesMinor)], ['Total repayable', ugx(totalRepayableMinor)], ['Confirmed paid', ugx(paidMinor)], ['Payment due', ugx(paymentDueMinor)]] })().map(([k,v]) => <div key={String(k)}><span>{k}</span><strong>{v as string}</strong></div>)}</div>
       <div className="detail-card-head" style={{marginTop:12}}><h3>Repayment schedule</h3></div>
       <div className="table-scroll"><table className="lf-table"><thead><tr><th>#</th><th>Due date</th><th>Principal</th><th>Interest</th><th>Total due</th><th>Status</th></tr></thead><tbody>{((statement.schedule as any[])||[]).map((r:any)=><tr key={r._id??r.installmentNumber}><td>{r.installmentNumber}</td><td>{String(r.dueDate??'').slice(0,10)}</td><td>{ugx(r.principalMinor)}</td><td>{ugx(r.interestMinor)}</td><td>{ugx(r.totalMinor)}</td><td><StatusBadge status={String(r.status??'pending')} /></td></tr>)}{!((statement.schedule as any[])||[]).length && <tr><td colSpan={6}>No schedule</td></tr>}</tbody></table></div>
       <div className="detail-card-head" style={{marginTop:12}}><h3>Payments (including partial/daily)</h3></div>
-      <div className="table-scroll"><table className="lf-table"><thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead><tbody>{((statement.payments as any[])||[]).map((p:any)=><tr key={p._id??p.reference}><td>{String(p.createdAt??'').slice(0,10)}</td><td className="mono-text">{p.reference}</td><td>{ugx(p.amountMinor)}</td><td>{p.method}</td><td><StatusBadge status={p.status==='confirmed'?'Successful':p.status==='pending_verification'?'Pending review':String(p.status)} /></td></tr>)}{!((statement.payments as any[])||[]).length && <tr><td colSpan={5}>No payments recorded</td></tr>}</tbody></table></div>
+      <div className="table-scroll"><table className="lf-table"><thead><tr><th>Date</th><th>Reference</th><th>Principal</th><th>Interest</th><th>Fees</th><th>Total</th><th>Method</th><th>Status</th></tr></thead><tbody>{((statement.payments as any[])||[]).map((p:any)=>{const allocation=(key:string)=>Array.isArray(p.allocations)&&p.allocations.length?p.allocations.reduce((sum:number,item:any)=>sum+Number(item[key]??0),0):null;return <tr key={p._id??p.reference}><td>{String(p.createdAt??'').slice(0,10)}</td><td className="mono-text">{p.reference}</td><td>{allocation('principalMinor')===null?'—':ugx(allocation('principalMinor'))}</td><td>{allocation('interestMinor')===null?'—':ugx(allocation('interestMinor'))}</td><td>{allocation('feesMinor')===null?'—':ugx(allocation('feesMinor'))}</td><td>{ugx(p.amountMinor)}</td><td>{p.method}</td><td><StatusBadge status={p.status==='confirmed'?'Successful':p.status==='pending_verification'?'Pending review':String(p.status)} /></td></tr>})}{!((statement.payments as any[])||[]).length && <tr><td colSpan={8}>No payments recorded</td></tr>}</tbody></table></div>
     </Card>}
     {segment === 'applications' && <Card className="detail-info-card"><div className="detail-card-head"><h2>Review comments & attachments</h2></div><div className="detail-card-head" style={{marginTop:0}}><h3>Comments</h3></div>{Array.isArray((record as any).reviewComments) && (record as any).reviewComments.length ? <div className="activity-list">{((record as any).reviewComments as any[]).slice().reverse().map((c,i)=><div className="activity-row" key={i}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{String(c.kind||'review')}</strong><small>{String(c.body||'')}</small></span><time>{c.at ? new Date(c.at).toLocaleString() : ''} · {String(c.actorName||c.actorId||'')}</time></div>)}</div> : <div className="table-empty"><strong>No review comments</strong></div>}<div className="detail-card-head" style={{marginTop:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><h3>Attachments</h3><label className="lf-button lf-button-outline" style={{cursor: uploadBusy?'wait':'pointer'}}><UploadCloud size={15} /> {uploadBusy ? 'Uploading…' : 'Upload attachment'}<input type="file" style={{display:'none'}} accept=".pdf,.jpg,.jpeg,.png" disabled={uploadBusy} onChange={async (e) => { const file = e.target.files?.[0]; e.target.value=''; if (!file) return; setUploadBusy(true); try { const sig = await api.getApplicationAttachmentSignature(String(record?._id ?? id), { mimeType: file.type || 'application/octet-stream', size: file.size }); const uploaded = await uploadToCloudinary(sig as any, file); await api.saveApplicationAttachment(String(record?._id ?? id), { name: file.name, kind: 'document', reference: (uploaded as any).secure_url || uploaded.public_id, storageKey: uploaded.public_id, mimeType: file.type, size: file.size }); toast.success('Attachment uploaded and recorded'); await load() } catch (err) { toast.error(err instanceof Error ? err.message : 'Attachment upload failed. If Cloudinary is not configured, use attachment metadata references.') } finally { setUploadBusy(false) } }} /></label></div>{Array.isArray((record as any).attachments) && (record as any).attachments.length ? <div className="table-scroll"><table className="lf-table"><thead><tr><th>Name</th><th>Kind</th><th>Reference</th><th>Added</th></tr></thead><tbody>{((record as any).attachments as any[]).map((a,i)=><tr key={i}><td>{String(a.name||'')}</td><td>{String(a.kind||'document')}</td><td className="mono-text" title={String(a.reference||'')}>{String(a.reference||'').slice(0,48)}{String(a.reference||'').length>48?'…':''}</td><td>{a.addedAt ? new Date(a.addedAt).toLocaleString() : '—'}</td></tr>)}</tbody></table></div> : <div className="table-empty"><strong>No attachments yet</strong><p>Upload a file (Cloudinary configured) or record attachment metadata. Files are stored securely and references are audited.</p></div>}</Card>}
     <Card className="detail-info-card">

@@ -514,7 +514,31 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                               )}
                               {path === '/repayments' && (
                                 <>
-                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { const { getRecordDetail } = await import('../lib/api'); const { generateReceiptPDF } = await import('../lib/exportDocs'); const rec = await getRecordDetail('payments', String(row.recordId ?? row.id)); const repayment = { id: String(rec._id ?? row.id), customer: String((rec as any).customerName ?? (rec as any).customer ?? rec.customerId ?? '—'), customerId: String(rec.customerId ?? ''), loan: String(rec.loanAccountId ?? rec.loan ?? '—'), amount: Number(rec.amountMinor ?? 0) / 100, method: String(rec.method ?? 'Cash') as any, reference: String(rec.reference ?? '—'), date: String(rec.confirmedAt ?? rec.createdAt ?? ''), receivedBy: '—', status: String(rec.status ?? '') === 'confirmed' ? 'Successful' : 'Pending review' as any }; await generateReceiptPDF({ repayment, org }); toast.success('Receipt PDF downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be generated.') } }}><Printer size={15} /> Receipt PDF</DropdownMenu.Item>
+                                  <DropdownMenu.Item className="dropdown-item" onSelect={async () => {
+                                    try {
+                                      const { getRecordDetail } = await import('../lib/api')
+                                      const { generateReceiptPDF } = await import('../lib/exportDocs')
+                                      const rec = await getRecordDetail('payments', String(row.recordId ?? row.id))
+                                      const repayment = {
+                                        id: String(rec._id ?? row.id),
+                                        customer: String((rec as any).customerName ?? (rec as any).customer ?? rec.customerId ?? '—'),
+                                        customerId: String((rec as any).customerNumber ?? rec.customerId ?? ''),
+                                        loan: String((rec as any).loanReference ?? rec.loanAccountId ?? rec.loan ?? '—'),
+                                        loanReference: String((rec as any).loanReference ?? rec.loanAccountId ?? rec.loan ?? ''),
+                                        amount: Number(rec.amountMinor ?? 0) / 100,
+                                        method: String(rec.method ?? 'Cash') as any,
+                                        reference: String(rec.reference ?? '—'),
+                                        customerPhone: String((rec as any).customerPhone ?? ''),
+                                        allocations: Array.isArray(rec.allocations) ? rec.allocations : [],
+                                        date: String(rec.confirmedAt ?? rec.createdAt ?? ''),
+                                        receivedBy: String((rec as any).receivedByName ?? '—'),
+                                        receivedByName: String((rec as any).receivedByName ?? '—'),
+                                        status: String(rec.status ?? '') === 'confirmed' ? 'Successful' : String(rec.status ?? '') === 'reversed' ? 'Reversed' : 'Pending review',
+                                      }
+                                      await generateReceiptPDF({ repayment, org })
+                                      toast.success('Receipt PDF downloaded')
+                                    } catch (e) { toast.error(e instanceof Error ? e.message : 'Receipt could not be generated.') }
+                                  }}><Printer size={15} /> Receipt PDF</DropdownMenu.Item>
                                   {String(row.status ?? '') === 'Pending review' && (
                                     <DropdownMenu.Item className="dropdown-item" onSelect={async () => { try { await api.confirmRepayment(String(row.recordId ?? row.id)); toast.success('Repayment confirmed'); void loadData() } catch (e) { toast.error(e instanceof Error ? e.message : 'Repayment could not be confirmed. Check permission repayments.confirm.') } }}><ClipboardCheck size={15} /> Confirm payment</DropdownMenu.Item>
                                   )}

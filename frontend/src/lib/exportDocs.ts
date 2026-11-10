@@ -8,6 +8,7 @@
  */
 
 import type { LoanAccount, Repayment, ScheduleInstallment } from './types'
+import type { jsPDF } from 'jspdf'
 
 // ─── Org info shape ──────────────────────────────────────────────────────────
 export interface OrgInfo {
@@ -100,6 +101,39 @@ const TEXT_DARK: [number, number, number] = [30, 45, 70]
 const TEXT_MUTED: [number, number, number] = [110, 125, 145]
 const BORDER: [number, number, number] = [220, 228, 238]
 
+async function orgLogoPng(org: OrgInfo): Promise<string | null> {
+  if (!org.logoDataUrl) return null
+  try {
+    const response = await fetch(org.logoDataUrl)
+    if (!response.ok) throw new Error('Logo request failed.')
+    const bitmap = await createImageBitmap(await response.blob())
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Logo image could not be rendered.')
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    return canvas.toDataURL('image/png')
+  } catch {
+    throw new Error('The configured organisation logo could not be loaded for this PDF. Check the logo URL or upload the logo again.')
+  }
+}
+
+function drawOrgLogo(doc: jsPDF, logo: string | null, org: OrgInfo, x: number, y: number, size: number) {
+  if (logo) {
+    doc.addImage(logo, 'PNG', x, y, size, size)
+    return
+  }
+  doc.setDrawColor(...WHITE)
+  doc.roundedRect(x, y, size, size, 2, 2, 'S')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...WHITE)
+  const initials = org.companyName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+  doc.text(initials || 'LM', x + size / 2, y + size / 2 + 2, { align: 'center' })
+}
+
 // ─── A. exportReportPDF ───────────────────────────────────────────────────────
 
 export interface ReportPDFOptions {
@@ -119,6 +153,7 @@ export async function exportReportPDF(options: ReportPDFOptions): Promise<Blob |
   const { reportLabel, rows, fromDate, toDate, org, summary, save = true } = options
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
+  const logo = await orgLogoPng(org)
   const docNo = docNumber('RPT')
   const now = new Date()
   const filename = `${reportLabel.toLowerCase().replace(/\s+/g, '-')}-${now.toISOString().slice(0, 10)}.pdf`
@@ -126,16 +161,17 @@ export async function exportReportPDF(options: ReportPDFOptions): Promise<Blob |
   // ── TOP HEADER BAR ──
   doc.setFillColor(...NAVY)
   doc.rect(0, 0, W, 22, 'F')
+  drawOrgLogo(doc, logo, org, 10, 2, 18)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(15)
   doc.setTextColor(...WHITE)
-  doc.text(org.companyName.toUpperCase(), 10, 10)
+  doc.text(org.companyName.toUpperCase(), 34, 10)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(180, 210, 245)
-  doc.text(org.tagline || 'LOAN OPERATIONS', 10, 16)
+  doc.text(org.tagline || 'LOAN OPERATIONS', 34, 16)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
@@ -417,6 +453,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   const { default: autoTable } = await import('jspdf-autotable')
 
   const { repayment, loan, org, save = true, filename } = data
+  const logo = await orgLogoPng(org)
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -428,15 +465,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   doc.setFillColor(...NAVY)
   doc.rect(0, 0, W, 32, 'F')
 
-  // Logo placeholder box
-  doc.setFillColor(255, 255, 255, 0.15)
-  doc.setDrawColor(255, 255, 255)
-  doc.roundedRect(10, 7, 18, 18, 2, 2, 'S')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...WHITE)
-  const initials = org.companyName.split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase()
-  doc.text(initials, 19, 18, { align: 'center' })
+  drawOrgLogo(doc, logo, org, 10, 7, 18)
 
   // Company name
   doc.setFont('helvetica', 'bold')
@@ -526,11 +555,18 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   y += 42
 
   // ── ALLOCATION TABLE ──
+  const allocations = repayment.allocations ?? []
+  const allocatedMinor = (key: 'principalMinor' | 'interestMinor' | 'feesMinor') =>
+    allocations.length ? allocations.reduce((sum, allocation) => sum + Number(allocation[key] ?? 0), 0) : null
   const allocationBody = [
-    ['Principal', '—', '(See loan statement for breakdown)'],
-    ['Interest', '—', ''],
-    ['Fees', '—', ''],
-  ]
+    ['Principal', allocatedMinor('principalMinor'), 'Applied to principal balance'],
+    ['Interest', allocatedMinor('interestMinor'), 'Applied to interest due'],
+    ['Fees', allocatedMinor('feesMinor'), 'Applied to fees due'],
+  ].map(([label, amount, notes]) => [
+    String(label),
+    typeof amount === 'number' ? fmtUGX(amount / 100) : '—',
+    typeof amount === 'number' ? String(notes) : 'Allocation unavailable',
+  ])
   const allocationTotal = [[{ content: 'Total Payment', styles: { fontStyle: 'bold' as const } }, { content: fmtUGX(repayment.amount || 0), styles: { fontStyle: 'bold' as const, halign: 'right' as const } }, '']]
 
   autoTable(doc, {
@@ -613,6 +649,7 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
   const { disbursement, org, save = true, filename } = data
+  const logo = await orgLogoPng(org)
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -620,10 +657,7 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   const now = new Date()
   const outName = filename || `disbursement-${receiptNo}.pdf`
   doc.setFillColor(...NAVY); doc.rect(0, 0, W, 32, 'F')
-  doc.setDrawColor(255,255,255); doc.roundedRect(10,7,18,18,2,2,'S')
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...WHITE)
-  const initials = org.companyName.split(/\s+/).map((p)=>p[0]).join('').slice(0,2).toUpperCase()
-  doc.text(initials,19,18,{align:'center'})
+  drawOrgLogo(doc, logo, org, 10, 7, 18)
   doc.setFontSize(14); doc.text(org.companyName.toUpperCase(),32,13)
   doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180,210,245)
   doc.text(`${org.tagline||'LOAN OPERATIONS'} · ${org.country}`,32,19)
@@ -651,6 +685,7 @@ export interface LoanStatementData {
   loan: LoanAccount
   repayments: Repayment[]
   schedule?: ScheduleInstallment[]
+  disbursements?: Array<{ date: string; reference: string; amount: number; method?: string; status: string }>
   org: OrgInfo
   customerInfo?: { address?: string; phone?: string; email?: string }
   save?: boolean
@@ -661,7 +696,8 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
-  const { loan, repayments, schedule, org, customerInfo, save = true, filename } = data
+  const { loan, repayments, schedule, disbursements, org, customerInfo, save = true, filename } = data
+  const logo = await orgLogoPng(org)
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -673,13 +709,7 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   doc.setFillColor(...NAVY)
   doc.rect(0, 0, W, 32, 'F')
 
-  doc.setDrawColor(255, 255, 255)
-  doc.roundedRect(10, 7, 18, 18, 2, 2, 'S')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(...WHITE)
-  const initials = org.companyName.split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase()
-  doc.text(initials, 19, 18, { align: 'center' })
+  drawOrgLogo(doc, logo, org, 10, 7, 18)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
@@ -714,9 +744,9 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
 
   // ── BORROWER & LOAN DETAILS (2-column grid) ──
   doc.setFillColor(...SILVER)
-  doc.roundedRect(10, y, W - 20, 50, 2, 2, 'F')
+  doc.roundedRect(10, y, W - 20, 74, 2, 2, 'F')
   doc.setDrawColor(...BORDER)
-  doc.roundedRect(10, y, W - 20, 50, 2, 2, 'S')
+  doc.roundedRect(10, y, W - 20, 74, 2, 2, 'S')
 
   const detailLeft = 14
   const detailRight = W / 2 + 5
@@ -753,7 +783,14 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   detailRow('Loan Status', loan.status || '—', detailLeft, r5y)
   detailRow('Maturity Date', fmtDate(loan.maturity), detailRight, r5y)
 
-  y += 56
+  const r6y = r5y + detailRowH + 2
+  detailRow('Total Interest', fmtUGX(loan.interest || 0), detailLeft, r6y)
+  detailRow('Total Fees', fmtUGX(loan.fees || 0), detailRight, r6y)
+  const r7y = r6y + detailRowH + 2
+  detailRow('Total Repayable', fmtUGX((loan.principal || 0) + (loan.interest || 0) + (loan.fees || 0)), detailLeft, r7y)
+  detailRow('Email', customerInfo?.email || '—', detailRight, r7y)
+
+  y += 80
 
   // ── ACCOUNT SUMMARY BOXES ──
   const summaryItems = [
@@ -786,14 +823,20 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   y += 4
 
   if (repayments.length > 0) {
-    let runningBalance = loan.disbursed || loan.principal || 0
-    const repayBody = repayments.map((r, idx) => {
-      runningBalance = Math.max(0, runningBalance - (r.amount || 0))
+    let runningBalance = (loan.principal || 0) + (loan.interest || 0) + (loan.fees || 0)
+    const repayBody = repayments.map((r) => {
+      if (r.status === 'Successful') runningBalance = Math.max(0, runningBalance - (r.amount || 0))
+      const allocation = (key: 'principalMinor' | 'interestMinor' | 'feesMinor') => {
+        if (!r.allocations?.length) return '—'
+        const minor = r.allocations.reduce((sum, item) => sum + Number(item[key] ?? 0), 0)
+        return fmtUGX(minor / 100)
+      }
       return [
-        String(idx + 1),
         fmtDate(r.date),
         r.reference || r.id || '—',
-        '—',
+        allocation('principalMinor'),
+        allocation('interestMinor'),
+        allocation('feesMinor'),
         fmtUGX(r.amount || 0),
         fmtUGX(runningBalance),
         r.status || '—',
@@ -801,7 +844,7 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
     })
 
     autoTable(doc, {
-      head: [['#', 'Date', 'Reference', 'Debit', 'Credit', 'Balance', 'Status']],
+      head: [['Date', 'Reference', 'Principal', 'Interest', 'Fees', 'Payment', 'Balance', 'Status']],
       body: repayBody,
       startY: y,
       theme: 'grid',
@@ -809,14 +852,16 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
       bodyStyles: { fontSize: 7.5, textColor: TEXT_DARK, cellPadding: 2.5 },
       alternateRowStyles: { fillColor: SILVER },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 8 },
+        0: { cellWidth: 21 },
+        2: { halign: 'right' },
         3: { halign: 'right' },
         4: { halign: 'right' },
-        5: { halign: 'right', fontStyle: 'bold' },
+        5: { halign: 'right' },
+        6: { halign: 'right', fontStyle: 'bold' },
       },
       tableLineColor: BORDER,
       tableLineWidth: 0.3,
-      margin: { left: 10, right: 10 },
+      margin: { left: 10, right: 10, bottom: 24 },
     })
     y = ((doc as any).lastAutoTable?.finalY ?? y + 20) + 8
   } else {
@@ -827,8 +872,30 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
     y += 14
   }
 
-  // ── SCHEDULE TABLE (if available & fits) ──
-  if (schedule && schedule.length > 0 && y < H - 60) {
+  if (disbursements?.length) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(...NAVY)
+    doc.text('Disbursement History', 10, y)
+    y += 4
+    autoTable(doc, {
+      head: [['Date', 'Reference', 'Amount', 'Method', 'Status']],
+      body: disbursements.map((entry) => [fmtDate(entry.date), entry.reference || '—', fmtUGX(entry.amount), entry.method || '—', entry.status || '—']),
+      startY: y,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY_LIGHT, textColor: WHITE, fontSize: 7.5, fontStyle: 'bold', cellPadding: 3 },
+      bodyStyles: { fontSize: 7.5, textColor: TEXT_DARK, cellPadding: 2.5 },
+      alternateRowStyles: { fillColor: SILVER },
+      columnStyles: { 2: { halign: 'right' } },
+      tableLineColor: BORDER,
+      tableLineWidth: 0.3,
+      margin: { left: 10, right: 10, bottom: 24 },
+    })
+    y = ((doc as any).lastAutoTable?.finalY ?? y + 20) + 8
+  }
+
+  // ── SCHEDULE TABLE ──
+  if (schedule && schedule.length > 0) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
     doc.setTextColor(...NAVY)
@@ -838,13 +905,16 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
     const schedBody = schedule.map((s, i) => [
       String(i + 1),
       fmtDate(s.due),
+      fmtUGX(s.principal || 0),
+      fmtUGX(s.interest || 0),
+      fmtUGX(s.fees || 0),
       fmtUGX(s.expected || 0),
       fmtUGX(s.paid || 0),
       s.status || '—',
     ])
 
     autoTable(doc, {
-      head: [['#', 'Due Date', 'Expected', 'Paid', 'Status']],
+      head: [['#', 'Due Date', 'Principal', 'Interest', 'Fees', 'Total Due', 'Paid', 'Status']],
       body: schedBody,
       startY: y,
       theme: 'grid',
@@ -855,10 +925,13 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
         0: { halign: 'center', cellWidth: 8 },
         2: { halign: 'right' },
         3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right' },
       },
       tableLineColor: BORDER,
       tableLineWidth: 0.3,
-      margin: { left: 10, right: 10 },
+      margin: { left: 10, right: 10, bottom: 24 },
     })
   }
 
@@ -885,4 +958,3 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   if (!save) return doc.output('blob') as Blob
   doc.save(outName)
 }
-
