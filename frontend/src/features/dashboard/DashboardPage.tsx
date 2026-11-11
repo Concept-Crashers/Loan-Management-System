@@ -11,9 +11,16 @@ import { api } from '../../lib/services'
 import type { Application, Customer, LoanAccount, Repayment, ScheduleInstallment } from '../../lib/types'
 import type { RootState } from '../../store/store'
 
+function getDashboardGreeting(date = new Date()) {
+  const hour = date.getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 function MetricCard({ label, value, change, icon: Icon, color, hint }: { label: string; value: string; change: string; icon: typeof Users; color: string; hint: string }) {
   return (
-    <Card className="metric-card">
+    <Card className={`metric-card metric-card-${color}`}>
       <div className="metric-top">
         <span className={`metric-icon ${color}`}><Icon size={18} strokeWidth={1.9} /></span>
         <span className="metric-change"><ArrowUpRight size={13} /> {change}</span>
@@ -33,10 +40,16 @@ export function DashboardPage() {
   const [applications, setApplications] = useState<Application[]>([])
   const [schedules, setSchedules] = useState<ScheduleInstallment[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [greeting, setGreeting] = useState(() => getDashboardGreeting())
 
   const user = useSelector((state: RootState) => state.session.user)
   const branding = useSelector((state: RootState) => state.branding)
   const userDisplayName = user?.name?.trim() || 'Team'
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setGreeting(getDashboardGreeting()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     async function loadDashboard() {
@@ -129,7 +142,7 @@ export function DashboardPage() {
       <div className="page-heading dashboard-heading">
         <div>
           <div className="eyebrow"><span className="live-spark" /> {todayStr}</div>
-          <h1>Hello, {userDisplayName} <span className="wave">✳</span></h1>
+          <h1>{greeting}, {userDisplayName} <span className="wave">✳</span></h1>
         </div>
         <div className="heading-actions">
           <Button variant="outline" icon={ListFilter} onClick={() => void exportOverviewPDF()}>Export overview</Button>

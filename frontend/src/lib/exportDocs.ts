@@ -160,7 +160,8 @@ async function addDocumentWatermark(doc: jsPDF, logo: string | null) {
   const pageHeight = doc.internal.pageSize.getHeight()
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page)
-    doc.addImage(watermark, 'PNG', (pageWidth - 68) / 2, (pageHeight - 68) / 2, 68, 68)
+    const watermarkSize = Math.min(112, pageWidth * 0.62, pageHeight * 0.36)
+    doc.addImage(watermark, 'PNG', (pageWidth - watermarkSize) / 2, (pageHeight - watermarkSize) / 2, watermarkSize, watermarkSize)
   }
 }
 

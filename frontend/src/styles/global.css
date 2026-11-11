@@ -184,6 +184,7 @@ a { color: inherit; text-decoration: none; }
 .refresh-note .online-dot { width: 6px; height: 6px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
 .metric-card { min-height: 113px; padding: 13px 14px 11px; }
+.metric-card-blue { border-color: #e6eef9; background: rgb(236 244 255 / 42%); }.metric-card-green { border-color: #e4f0e9; background: rgb(233 246 239 / 42%); }.metric-card-violet { border-color: #ebe8f7; background: rgb(240 238 251 / 42%); }.metric-card-amber { border-color: #f2eadc; background: rgb(252 243 227 / 46%); }
 .metric-top { display: flex; align-items: center; justify-content: space-between; }
 .metric-icon { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 8px; }
 .metric-icon.blue { color: #3978c5; background: #ecf4ff; }.metric-icon.green { color: #27876a; background: #e9f6ef; }.metric-icon.violet { color: #7166ac; background: #f0eefb; }.metric-icon.amber { color: #aa782e; background: #fcf3e3; }
@@ -283,6 +284,15 @@ a { color: inherit; text-decoration: none; }
 .lf-table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
 .lf-table th { height: 36px; padding: 0 11px; border-bottom: 1px solid #eef1f5; color: #77899d; background: #fff; font-size: 11.5px; font-weight: 600; }
 .lf-table td { height: 46px; padding: 6px 11px; border-bottom: 1px solid #f0f2f5; color: #5d7188; font-size: 11.5px; }
+.selection-column { width: 38px; min-width: 38px; padding-right: 4px !important; padding-left: 12px !important; text-align: center; }
+.table-select-checkbox { width: 15px; height: 15px; margin: 0; accent-color: #3478c8; cursor: pointer; vertical-align: middle; }
+.table-select-checkbox:focus-visible { outline: 3px solid rgb(52 120 200 / 25%); outline-offset: 2px; }
+.bulk-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: 9px; flex-wrap: wrap; margin: 10px 12px; padding: 9px 11px; border: 1px solid #dfe9f5; border-radius: 8px; background: #f6f9fd; }
+.bulk-selection-count { display: flex; align-items: center; gap: 6px; color: #647991; font-size: 11px; }
+.bulk-selection-count strong { color: #2f5e98; font-size: 12px; }
+.bulk-selection-count button { margin-left: 4px; padding: 2px 4px; border: 0; color: #3974b8; background: transparent; font: inherit; cursor: pointer; }
+.bulk-confirm-summary { display: flex; align-items: center; gap: 12px; margin: 12px 0 2px; padding: 14px; border: 1px solid #e6edf4; border-radius: 9px; color: #647991; background: #f8fafc; font-size: 12px; line-height: 1.5; }
+.bulk-confirm-summary strong { color: #2f5e98; font-size: 21px; }
 .lf-table tbody tr:last-child td { border-bottom: 0; }
 .data-row { transition: background .12s ease; }.data-row:hover { background: #f9fbfd; }
 .sort-button { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; color: inherit; background: transparent; font-size: inherit; font-weight: inherit; }
@@ -521,6 +531,8 @@ a { color: inherit; text-decoration: none; }
 [data-theme='dark'] .lf-table th, [data-theme='dark'] .lf-table td, [data-theme='dark'] .transaction-row, [data-theme='dark'] .upcoming-row, [data-theme='dark'] .portfolio-status-breakdown, [data-theme='dark'] .dropdown-separator { border-color: #29425f; }
 [data-theme='dark'] .lf-table th, [data-theme='dark'] .lf-table td, [data-theme='dark'] .transaction-main small, [data-theme='dark'] .upcoming-main small, [data-theme='dark'] .transaction-date { color: #9db0c5; }
 [data-theme='dark'] .lf-table th { color: #b0c1d3; background: var(--surface); }[data-theme='dark'] .pagination-size, [data-theme='dark'] .pagination-buttons button { border-color: #31506e; color: #b4c7da; background: #102640; }[data-theme='dark'] .pagination-buttons button.pagination-current { color: #fff; background: var(--blue); }
+[data-theme='dark'] .metric-card-blue { border-color: #274364; background: rgb(31 66 103 / 32%); }[data-theme='dark'] .metric-card-green { border-color: #285447; background: rgb(34 79 63 / 32%); }[data-theme='dark'] .metric-card-violet { border-color: #403c67; background: rgb(62 55 103 / 32%); }[data-theme='dark'] .metric-card-amber { border-color: #59482d; background: rgb(93 68 31 / 30%); }
+[data-theme='dark'] .bulk-selection-bar, [data-theme='dark'] .bulk-confirm-summary { border-color: var(--line); color: #b7c8da; background: #102640; }
 [data-theme='dark'] .table-toolbar, [data-theme='dark'] .info-callout, [data-theme='dark'] .access-restricted-note, [data-theme='dark'] .access-warning, [data-theme='dark'] .receipt-disclaimer { border-color: var(--line); background: #102640; }
 [data-theme='dark'] .table-toolbar { background: transparent; }[data-theme='dark'] .dialog-overlay { background: rgb(2 10 20 / 68%); }
 [data-theme='dark'] .alert-strip { border-color: #66532f; color: #d7bd85; background: #302718; }.alert-strip strong { color: #e4c98e; }

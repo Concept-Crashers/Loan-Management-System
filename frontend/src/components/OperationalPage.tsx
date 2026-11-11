@@ -24,6 +24,11 @@ function displayValue(row: TableRow, column: PageColumn) {
   return String(value)
 }
 
+function rowSelectionKey(row: TableRow) {
+  const key = row.recordId ?? row.id ?? row.ref
+  return key === undefined || key === null ? '' : String(key)
+}
+
 function recordViewLabel(key: string) {
   return key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -148,6 +153,10 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [branchOptions, setBranchOptions] = useState<Array<{ id: string; name: string }>>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set())
+  const pageSelectRef = useRef<HTMLInputElement>(null)
+  const [bulkStatusAction, setBulkStatusAction] = useState<'active' | 'inactive' | null>(null)
+  const [bulkStatusSaving, setBulkStatusSaving] = useState(false)
   const [selected, setSelected] = useState<TableRow | null>(null)
   const [selectedDetail, setSelectedDetail] = useState<Record<string, unknown> | null>(null)
   const [selectedDetailLoading, setSelectedDetailLoading] = useState(false)
@@ -210,10 +219,25 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     setLoadError(null)
     try {
       if (path === '/customers') {
-        if (isSuperAdmin && !branchOptions.length) api.listBranches().then((b) => setBranchOptions((b||[]).map((x:any)=>({id:String(x.branchId||x.id||''),name:String(x.name||x.branchId||x.id||'')})).filter((x)=>x.id))).catch(()=>{})
+        let branches = branchOptions
+        if (!branches.length) {
+          try {
+            branches = (await api.listBranches()).map((branch) => ({ id: String(branch.branchId ?? branch.id), name: branch.name }))
+            setBranchOptions(branches)
+          } catch {
+            setLoadError('Branch names could not be loaded. Customer branch assignments may be unavailable.')
+          }
+        }
         const rows = await api.listCustomers(isSuperAdmin && branchScope !== 'all' ? { branchId: branchScope } : undefined)
-        const bmap = new Map(branchOptions.map((b) => [b.id, b.name]))
-        setRemoteRows(rows.map((item:any) => ({ id: item.id, name: item.name, branch: bmap.get(String(item.branchId||'')) || String(item.branchId||'—'), phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered })))
+        const bmap = new Map(branches.map((branch) => [branch.id, branch.name]))
+        setRemoteRows(rows.map((item:any) => {
+          const branchId = String(item.branchId ?? '')
+          const resolvedName = bmap.get(branchId)
+          const directName = typeof item.branch === 'object' && item.branch !== null
+            ? String((item.branch as Record<string, unknown>).name ?? '')
+            : String(item.branchName ?? '')
+          return { id: item.id, recordId: item.recordId, name: item.name, branch: directName || resolvedName || (branchId ? 'Branch unavailable' : '—'), phone: item.phone, district: item.district, loans: item.loans, outstanding: item.outstanding, status: item.status, registered: item.registered, version: (item as any).version }
+        }))
       } else if (path === '/products') {
         const rows = await api.listProducts()
         setRemoteRows(rows.map((item) => ({ id: item.id, name: item.name, range: `${formatUGX(item.minAmount)} – ${formatUGX(item.maxAmount)}`, rate: item.rateLabel || `${item.interestRate}% ${(item as any).interestBasis === 'term' ? 'per term' : (item as any).interestBasis === 'monthly' ? 'per month' : 'p.a.'}`, duration: `${item.duration} months`, frequency: item.frequency, state: item.active ? 'Active' : 'Inactive' })))
@@ -299,11 +323,24 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
   const pageRows = filteredRows.slice((page - 1) * pageSize, page * pageSize)
+  const selectedRows = useMemo(() => allRows.filter((row) => selectedRowIds.has(rowSelectionKey(row))), [allRows, selectedRowIds])
+  const allPageSelected = pageRows.length > 0 && pageRows.every((row) => selectedRowIds.has(rowSelectionKey(row)))
+  const somePageSelected = pageRows.some((row) => selectedRowIds.has(rowSelectionKey(row)))
+  const exportRowsForAction = selectedRows.length ? selectedRows : filteredRows
   const visiblePageNumbers = Array.from({ length: pageCount }, (_, index) => index + 1).slice(Math.max(0, page - 2), Math.min(pageCount, page + 1))
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
   }, [page, pageCount])
+
+  useEffect(() => {
+    if (pageSelectRef.current) pageSelectRef.current.indeterminate = somePageSelected && !allPageSelected
+  }, [somePageSelected, allPageSelected])
+
+  useEffect(() => {
+    setSelectedRowIds(new Set())
+    setBulkStatusAction(null)
+  }, [path])
 
   async function loadSelectedDetail(row: TableRow) {
     const requestId = ++previewRequestRef.current
@@ -343,6 +380,64 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       setSelected(row)
       setFollowupEditing(false)
       void loadSelectedDetail(row)
+    }
+  }
+
+  function toggleRowSelection(row: TableRow, checked: boolean) {
+    const key = rowSelectionKey(row)
+    if (!key) return
+    setSelectedRowIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  function togglePageSelection(checked: boolean) {
+    setSelectedRowIds((current) => {
+      const next = new Set(current)
+      for (const row of pageRows) {
+        const key = rowSelectionKey(row)
+        if (!key) continue
+        if (checked) next.add(key)
+        else next.delete(key)
+      }
+      return next
+    })
+  }
+
+  async function runBulkStatusAction() {
+    if (!bulkStatusAction || bulkStatusSaving || !selectedRows.length) return
+    const targetStatus = bulkStatusAction
+    setBulkStatusSaving(true)
+    try {
+      const results = await Promise.allSettled(selectedRows.map(async (row) => {
+        const id = String(row.recordId ?? row.id)
+        if (path === '/customers') {
+          const current = await getRecordDetail('customers', id)
+          await api.updateCustomerStatus(id, targetStatus, Number(current.version ?? row.version ?? 1))
+        } else if (path === '/products') {
+          await api.updateProductStatus(id, targetStatus)
+        } else {
+          throw new Error('Bulk status changes are not supported for this table.')
+        }
+        return rowSelectionKey(row)
+      }))
+      const succeeded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+      const failed = results.filter((result) => result.status === 'rejected')
+      setSelectedRowIds((current) => new Set([...current].filter((key) => !succeeded.includes(key))))
+      setBulkStatusAction(null)
+      if (succeeded.length) await loadData()
+      if (failed.length) {
+        const firstError = failed[0]
+        const reason = firstError.status === 'rejected' ? firstError.reason : null
+        toast.error(`${succeeded.length} updated; ${failed.length} failed. ${reason instanceof Error ? reason.message : 'Failed records remain selected so you can retry.'}`)
+      } else {
+        toast.success(`${succeeded.length} ${path === '/customers' ? 'customers' : 'loan products'} ${targetStatus === 'active' ? 'activated' : 'deactivated'}.`)
+      }
+    } finally {
+      setBulkStatusSaving(false)
     }
   }
 
@@ -507,10 +602,18 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
             <p>{loading ? 'Loading records…' : `${filteredRows.length} record${filteredRows.length === 1 ? '' : 's'}`}</p>
           </div>
           <div className="heading-actions">
-            <Button variant="outline" size="sm" icon={Download} onClick={() => void exportRows(filteredRows, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>Export</Button>
-            <Button variant="outline" size="sm" icon={MessageCircle} onClick={() => void shareRows(filteredRows, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Share failed.'))}>Share via WhatsApp</Button>
+            <Button variant="outline" size="sm" icon={Download} onClick={() => void exportRows(exportRowsForAction, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>{selectedRows.length ? `Export selected (${selectedRows.length})` : 'Export filtered'}</Button>
+            <Button variant="outline" size="sm" icon={MessageCircle} onClick={() => void shareRows(exportRowsForAction, definition.title, org).catch((e) => toast.error(e instanceof Error ? e.message : 'Share failed.'))}>{selectedRows.length ? `Share selected (${selectedRows.length})` : 'Share via WhatsApp'}</Button>
           </div>
         </div>
+
+        {selectedRows.length > 0 && <div className="bulk-selection-bar" role="region" aria-label="Selected record actions">
+          <div className="bulk-selection-count"><strong>{selectedRows.length}</strong><span>selected across this table</span><button type="button" onClick={() => setSelectedRowIds(new Set())}>Clear selection</button></div>
+          {['/customers', '/products'].includes(path) && <>
+            <Button size="sm" variant="outline" icon={UserPlus} onClick={() => setBulkStatusAction('active')}>Activate selected</Button>
+            <Button size="sm" variant="outline" icon={UserMinus} onClick={() => setBulkStatusAction('inactive')}>Deactivate selected</Button>
+          </>}
+        </div>}
 
         <div className="table-toolbar">
           <div className="table-search">
@@ -548,6 +651,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
               <table className="lf-table">
                 <thead>
                   <tr>
+                    <th className="selection-column"><input ref={pageSelectRef} type="checkbox" className="table-select-checkbox" checked={allPageSelected} onChange={(event) => togglePageSelection(event.target.checked)} aria-checked={somePageSelected && !allPageSelected ? 'mixed' : allPageSelected} aria-label={`Select all ${pageRows.length} records on this page`} /></th>
                     {definition.columns.map((column) => (
                       <th key={column.key}>
                         <button className="sort-button" onClick={() => setSort((current) => current?.key === column.key ? { key: column.key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key: column.key, direction: 'asc' })}>
@@ -562,6 +666,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                 <tbody>
                   {pageRows.map((row, index) => (
                     <tr key={String(row.id ?? row.ref ?? index)} onClick={() => openRow(row)} className="data-row">
+                      <td className="selection-column" onClick={(event) => event.stopPropagation()}><input type="checkbox" className="table-select-checkbox" checked={selectedRowIds.has(rowSelectionKey(row))} disabled={!rowSelectionKey(row)} onChange={(event) => toggleRowSelection(row, event.target.checked)} aria-label={`Select ${String(row.name ?? row.customer ?? row.ref ?? row.id ?? 'record')}`} /></td>
                       {definition.columns.map((column) => (
                         <td key={column.key}>
                           {column.format === 'person' ? (
@@ -814,6 +919,25 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
             {path === '/collections' && !followupEditing && <Button icon={FilePenLine} onClick={() => setFollowupEditing(true)}>Record follow-up</Button>}
             {path === '/collections' && followupEditing && <Button icon={Save} loading={followupSaving} onClick={() => void saveFollowup()}>Save follow-up</Button>}
             {selectedFullRecordPath && <Button variant="outline" icon={ExternalLink} onClick={() => { setSelected(null); navigate(selectedFullRecordPath) }}>Open full record</Button>}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!bulkStatusAction} onOpenChange={(open) => !open && !bulkStatusSaving && setBulkStatusAction(null)}>
+        <DialogContent
+          title={`${bulkStatusAction === 'active' ? 'Activate' : 'Deactivate'} ${path === '/customers' ? 'customers' : 'loan products'}`}
+          description="Apply this status change to each selected record. The system will report any records that could not be updated."
+          className="record-dialog"
+        >
+          <div className="bulk-confirm-summary">
+            <strong>{selectedRows.length}</strong>
+            <span>selected {path === '/customers' ? 'customers' : 'loan products'} will be {bulkStatusAction === 'active' ? 'activated' : 'deactivated'}.</span>
+          </div>
+          <div className="dialog-actions">
+            <Button variant="outline" disabled={bulkStatusSaving} onClick={() => setBulkStatusAction(null)}>Cancel</Button>
+            <Button variant={bulkStatusAction === 'inactive' ? 'danger' : 'primary'} icon={bulkStatusAction === 'active' ? UserPlus : UserMinus} loading={bulkStatusSaving} onClick={() => void runBulkStatusAction()}>
+              {bulkStatusAction === 'active' ? 'Activate selected' : 'Deactivate selected'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

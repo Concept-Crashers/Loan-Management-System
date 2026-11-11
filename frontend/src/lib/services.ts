@@ -370,8 +370,16 @@ export const api = {
     apiRequest<{ data?: unknown }>('/api/v1/auth/users', { method: 'POST', body: JSON.stringify(input) }),
 
   listBranches: async (): Promise<BranchRecord[]> => {
-    const response = await apiRequest<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/api/v1/organisation/branches')
-    const records = Array.isArray(response) ? response : (response.data ?? [])
+    const records: Array<Record<string, unknown>> = []
+    let page = 1
+    let pageCount = 1
+    do {
+      const response = await apiRequest<{ data: Array<Record<string, unknown>>; meta?: { pageCount?: number } } | Array<Record<string, unknown>>>(`/api/v1/organisation/branches?page=${page}&pageSize=100`)
+      const pageRecords = Array.isArray(response) ? response : response.data
+      records.push(...pageRecords)
+      pageCount = Array.isArray(response) ? 1 : Number(response.meta?.pageCount ?? page)
+      page += 1
+    } while (page <= pageCount)
     return records.map((record) => ({
       id: String(record._id ?? record.id ?? record.code ?? ''),
       branchId: String(record._id ?? record.id ?? ''),
