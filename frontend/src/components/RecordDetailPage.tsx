@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
+import { Dialog, DialogContent } from './ui/dialog'
 import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, shareBlob, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, exportReportPDF, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
@@ -22,7 +23,9 @@ const labels: Record<string, { endpoint: 'customers' | 'products' | 'application
 
 const sensitiveFields = new Set([
   'nationalid', 'nationalidnumber', 'idnumber', 'identificationreference',
-  'monthlyincome', 'income', 'salary', 'outstanding', 'outstandingbalance', 'balance',
+  'monthlyincome', 'monthlyincomeminor', 'income', 'incomeminor', 'salary',
+  'obligations', 'obligationsminor', 'monthlyobligations', 'monthlyobligationsminor',
+  'outstanding', 'outstandingbalance', 'balance',
 ])
 
 function humanizeFieldLabel(key: string) {
@@ -56,8 +59,51 @@ function isSensitiveField(key: string) {
 const ugx = (m: unknown) => typeof m === 'number' ? formatUGX(m / 100) : '—'
 function displayRecordField(key: string, value: unknown) {
   if (typeof value === 'number' && /minor$/i.test(key)) return ugx(value)
+  if (typeof value === 'number' && /(amount|income|obligations|balance|principal|interest|fees)/i.test(key)) return formatUGX(value)
   if (typeof value === 'string' && /(date|due|submitted|registered|created|updated)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(value)) return formatDate(value)
   return display(value)
+}
+
+function firstDetailValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (value !== undefined && value !== null && value !== '') return { key, value }
+  }
+  return null
+}
+
+function applicationDetailSections(record: Record<string, unknown>) {
+  const customer = typeof record.customer === 'object' && record.customer !== null
+    ? record.customer as Record<string, unknown>
+    : {}
+  const borrower = firstDetailValue(record, 'customerName', 'borrowerName', 'applicantName', 'name')
+    ?? firstDetailValue(customer, 'name', 'fullName')
+    ?? (typeof record.customer === 'string' ? { key: 'customer', value: record.customer } : null)
+  const fields = (pairs: Array<[string, ReturnType<typeof firstDetailValue>]>) => pairs
+    .filter((pair): pair is [string, NonNullable<ReturnType<typeof firstDetailValue>>] => pair[1] !== null)
+    .map(([label, field]) => ({ label, ...field }))
+  return [
+    { title: 'Applicant', fields: fields([
+      ['Borrower name', borrower],
+      ['Customer number', firstDetailValue(record, 'customerNumber', 'customerId') ?? firstDetailValue(customer, 'customerNumber', 'id')],
+      ['Phone', firstDetailValue(record, 'customerPhone', 'phone') ?? firstDetailValue(customer, 'phone')],
+      ['Email', firstDetailValue(record, 'customerEmail', 'email') ?? firstDetailValue(customer, 'email')],
+      ['Occupation', firstDetailValue(record, 'occupation') ?? firstDetailValue(customer, 'occupation')],
+      ['Employer / business', firstDetailValue(record, 'employer') ?? firstDetailValue(customer, 'employer')],
+    ]) },
+    { title: 'Loan request', fields: fields([
+      ['Product', firstDetailValue(record, 'productName', 'product')],
+      ['Requested amount', firstDetailValue(record, 'amountMinor', 'amount')],
+      ['Term', firstDetailValue(record, 'tenureMonths', 'durationMonths', 'duration')],
+      ['Purpose', firstDetailValue(record, 'purpose', 'loanPurpose')],
+      ['Submitted', firstDetailValue(record, 'submittedAt', 'submitted', 'createdAt')],
+      ['Branch', firstDetailValue(record, 'branchName', 'branchId')],
+    ]) },
+    { title: 'Affordability', fields: fields([
+      ['Monthly income', firstDetailValue(record, 'incomeMinor', 'income', 'monthlyIncomeMinor', 'monthlyIncome') ?? firstDetailValue(customer, 'monthlyIncomeMinor', 'monthlyIncome')],
+      ['Existing obligations', firstDetailValue(record, 'obligationsMinor', 'obligations', 'monthlyObligationsMinor', 'monthlyObligations')],
+    ]) },
+  ]
 }
 export function RecordDetailPage() {
   const { id = '' } = useParams()
@@ -78,6 +124,7 @@ export function RecordDetailPage() {
   const [statement, setStatement] = useState<Record<string, any> | null>(null)
   const [credit, setCredit] = useState<CreditAssessment | null>(null)
   const [creditLoading, setCreditLoading] = useState(false)
+  const [creditError, setCreditError] = useState<string | null>(null)
   const [action, setAction] = useState<{ title: string; desc: string; label: string; danger?: boolean; run: (reason: string) => Promise<void> } | null>(null)
   const [actionReason, setActionReason] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
@@ -287,7 +334,11 @@ export function RecordDetailPage() {
         if (segment === 'applications') setCredit(await getLatestCreditAssessment({ applicationId: String(detail._id ?? id) }))
         else if (segment === 'customers') setCredit(await getLatestCreditAssessment({ customerId: String(detail._id ?? id) }))
         else setCredit(null)
-      } catch { setCredit(null) }
+        setCreditError(null)
+      } catch (reason) {
+        setCredit(null)
+        setCreditError(reason instanceof Error ? reason.message : 'Credit assessment could not be loaded.')
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Record could not be loaded.')
     } finally {
@@ -305,6 +356,15 @@ export function RecordDetailPage() {
   const title = display(record.name ?? record.customer ?? record.reference ?? record.customerNumber ?? record._id)
   const editTo = config.editPath?.(id)
   const canEditApplication = segment === 'applications' && !!record && ['draft','submitted','under_review','assessment_required','approval_pending'].includes(String(record.status ?? ''))
+  const applicationSections = segment === 'applications' ? applicationDetailSections(record) : []
+  const applicationSummaryKeys = new Set([
+    'status', 'version', 'customer', 'customerid', 'customernumber', 'customername', 'borrowername', 'applicantname', 'name',
+    'customerphone', 'phone', 'customeremail', 'email', 'occupation', 'employer', 'product', 'productname', 'amountminor', 'amount',
+    'tenuremonths', 'durationmonths', 'duration', 'purpose', 'loanpurpose', 'submittedat', 'submitted', 'createdat', 'branchname',
+    'branchid', 'incomeminor', 'income', 'monthlyincomeminor', 'monthlyincome', 'obligationsminor', 'obligations',
+    'monthlyobligationsminor', 'monthlyobligations',
+  ])
+  const applicationMetadata = entries.filter(([key]) => !applicationSummaryKeys.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase()))
 
 
   async function runCreditScore() {
@@ -316,6 +376,7 @@ export function RecordDetailPage() {
         : { customerId: String(record._id ?? id) }
       const result = await calculateCreditScore(input)
       setCredit(result)
+      setCreditError(null)
       toast.success(`Credit score calculated: ${result.score ?? '—'}/100 (${result.grade ?? '—'})`)
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Credit score could not be calculated.') }
     finally { setCreditLoading(false) }
@@ -364,7 +425,26 @@ export function RecordDetailPage() {
         <Button variant="outline" onClick={() => { void printRecordDocument().then(() => toast.success('Print-ready PDF downloaded')).catch((error) => toast.error(error instanceof Error ? error.message : 'PDF could not be generated.')) }}>Print / PDF</Button>
       </div>
     </div>
-    <Card className="detail-info-card">
+    {segment === 'applications' ? <>
+      <Card className="detail-info-card application-review-card">
+        <div className="detail-card-head application-review-head"><div><h2>Application review</h2><p>Decision-ready summary of the borrower, request and affordability.</p></div><div className="application-review-badges"><StatusBadge status={display(record.status ?? 'Submitted')} /><span>Version {String(record.version ?? 1)}</span></div></div>
+        <div className="application-detail-sections">
+          {applicationSections.map((section) => <section className="application-detail-section" key={section.title}><h3>{section.title}</h3><div className="info-grid">
+            {section.fields.map(({ label, key, value }) => {
+              const restricted = !canViewSensitive && isSensitiveField(key)
+              const termText = display(value)
+              const shownValue = restricted ? 'Restricted' : label === 'Term' && /^\d+(?:\.\d+)?$/.test(termText) ? `${termText} months` : displayRecordField(key, value)
+              return <div key={`${section.title}-${key}`}><span>{label}</span><strong className={key.toLowerCase().includes('id') || key === 'reference' ? 'mono-text' : ''}>{shownValue}</strong></div>
+            })}
+          </div></section>)}
+        </div>
+        {!canViewSensitive && <div className="access-warning"><LockKeyhole size={15} /> Sensitive financial and identification values are masked for the {role} role. The backend must enforce authorization on every request.</div>}
+      </Card>
+      {applicationMetadata.length > 0 && <Card className="detail-info-card application-metadata-card"><div className="detail-card-head"><h2>Additional application data</h2></div><div className="info-grid">{applicationMetadata.map(([key, value]) => {
+        const restricted = !canViewSensitive && isSensitiveField(key)
+        return <div key={key}><span>{humanizeFieldLabel(key)}</span><strong className={key.toLowerCase().includes('id') || key === 'reference' ? 'mono-text' : ''}>{restricted ? 'Restricted' : displayRecordField(key, value)}</strong></div>
+      })}</div></Card>}
+    </> : <Card className="detail-info-card">
       <div className="detail-card-head"><h2>Record details</h2><StatusBadge status={display(record.status ?? record.state ?? 'Active')} /></div>
       <div className="info-grid">
         {entries.map(([key, value]) => {
@@ -372,12 +452,13 @@ export function RecordDetailPage() {
           return <div key={key}><span>{humanizeFieldLabel(key)}</span><strong className={key.toLowerCase().includes('id') || key === 'reference' ? 'mono-text' : ''}>{restricted ? 'Restricted' : displayRecordField(key, value)}</strong></div>
         })}
       </div>
-      {!canViewSensitive && <div className="access-warning"><LockKeyhole size={15} /> Sensitive financial and identification values are masked for the {role} demo role. The backend must enforce authorization on every request.</div>}
-    </Card>
+      {!canViewSensitive && <div className="access-warning"><LockKeyhole size={15} /> Sensitive financial and identification values are masked for the {role} role. The backend must enforce authorization on every request.</div>}
+    </Card>}
     {(segment === 'applications' || segment === 'customers') && <Card className="detail-info-card"><div className="detail-card-head"><h2><TrendingUp size={16} /> Credit score</h2>{canAssessCredit && <Button size="sm" variant="outline" loading={creditLoading} onClick={() => void runCreditScore()}>{credit ? 'Recalculate' : 'Calculate score'}</Button>}</div>
       {credit ? <><div className="info-grid">{[['Score', `${credit.score ?? '—'} / 100`], ['Grade', credit.grade ?? '—'], ['Risk level', String(credit.riskLevel ?? '—').replaceAll('_', ' ')], ['Recommendation', String(credit.recommendation ?? '—').replaceAll('_', ' ')], ['Model', `${credit.source ?? 'internal'} ${credit.modelVersion ?? ''}`.trim()], ['Calculated', credit.calculatedAt ? new Date(credit.calculatedAt).toLocaleString() : credit.createdAt ? new Date(credit.createdAt).toLocaleString() : '—']].map(([k,v]) => <div key={String(k)}><span>{k}</span><strong>{v}</strong></div>)}</div>
       {!!credit.riskIndicators?.length && <div style={{marginTop:10}}><span style={{fontSize:12,color:'#64748b'}}>Risk indicators</span><p style={{margin:'4px 0 0'}}>{credit.riskIndicators.join(' · ')}</p></div>}
       {!!credit.factors?.length && <div className="table-scroll" style={{marginTop:10}}><table className="lf-table"><thead><tr><th>Factor</th><th>Impact</th><th>Points</th><th>Value</th></tr></thead><tbody>{credit.factors.map((f)=><tr key={f.code}><td>{f.label}</td><td><StatusBadge status={f.impact === 'positive' ? 'Active' : f.impact === 'negative' ? 'Overdue' : 'Pending review'} /></td><td>{f.points > 0 ? `+${f.points}` : f.points}</td><td className="mono-text">{f.value === undefined ? '—' : String(f.value)}</td></tr>)}</tbody></table></div>}</>
+      : creditError ? <div className="credit-load-error" role="alert"><div><strong>Credit assessment unavailable</strong><p>{creditError}</p></div><Button size="sm" variant="outline" loading={creditLoading} onClick={() => void load()}>Retry</Button></div>
       : <div className="table-empty"><strong>No credit score yet</strong><p>{canAssessCredit ? 'Calculate an internal credit score from borrower, application, and repayment history.' : 'No credit assessment is available for this record.'}</p></div>}
     </Card>}
     {editing && canEditApplication && <Card className="detail-info-card"><div className="detail-card-head"><h2><Pencil size={16} /> Edit application</h2></div><div className="form-grid"><Field label="Requested amount (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} /></Field><Field label="Duration (months)"><Input type="number" min="1" step="1" value={edit.duration} onChange={(e) => setEdit({ ...edit, duration: e.target.value })} /></Field><Field label="Monthly income (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.income} onChange={(e) => setEdit({ ...edit, income: e.target.value })} /></Field><Field label="Monthly obligations (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.obligations} onChange={(e) => setEdit({ ...edit, obligations: e.target.value })} /></Field><Field label="Purpose" className="field-span-2"><Textarea rows={3} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></Field></div><div className="dialog-actions"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button loading={saving} onClick={() => void saveApplication()}>Save changes</Button></div></Card>}
@@ -395,6 +476,22 @@ export function RecordDetailPage() {
       <div className="detail-card-head"><h2><ShieldCheck size={16} /> Audit history</h2></div>
       {audit.length ? <div className="activity-list">{audit.map((event) => <div className="activity-row" key={event._id}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{event.action}</strong><small>{event.entityType} · {event.entityId} · by {event.actorId}</small></span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</div> : <div className="table-empty"><strong>No audit events recorded</strong><p>History will appear after a server-side action.</p></div>}
     </Card>
-    {action && <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal-card" style={{maxWidth:520}}><h3>{action.title}</h3><p>{action.desc}</p><Field label="Reason"><Textarea rows={4} value={actionReason} onChange={(e)=>setActionReason(e.target.value)} placeholder="Provide a clear reason for audit..." /></Field><div className="dialog-actions"><Button variant="outline" disabled={actionBusy} onClick={()=>{setAction(null);setActionReason('')}}>Cancel</Button><Button variant={action.danger?'danger':'primary'} loading={actionBusy} onClick={async ()=>{ if(actionReason.trim().length<3){toast.error('Please provide a reason (at least 3 characters).');return} setActionBusy(true); try{await action.run(actionReason.trim()); setAction(null); setActionReason('')}catch(e){toast.error(e instanceof Error?e.message:'Action failed.')}finally{setActionBusy(false)} }}>{action.label}</Button></div></div></div>}
+    <Dialog open={!!action} onOpenChange={(open) => { if (!open && !actionBusy) { setAction(null); setActionReason('') } }}>
+      <DialogContent title={action?.title ?? 'Confirm action'} description={action?.desc} className="record-dialog action-confirm-dialog">
+        <Field label="Reason" required hint="Enter at least 3 characters. This reason is recorded in the audit history.">
+          <Textarea rows={4} value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder="Provide a clear reason for audit..." maxLength={500} />
+        </Field>
+        <div className="dialog-actions">
+          <Button variant="outline" disabled={actionBusy} onClick={() => { setAction(null); setActionReason('') }}>Cancel</Button>
+          <Button variant={action?.danger ? 'danger' : 'primary'} loading={actionBusy} disabled={actionReason.trim().length < 3} onClick={async () => {
+            if (!action || actionReason.trim().length < 3) return
+            setActionBusy(true)
+            try { await action.run(actionReason.trim()); setAction(null); setActionReason('') }
+            catch (reason) { toast.error(reason instanceof Error ? reason.message : 'Action failed.') }
+            finally { setActionBusy(false) }
+          }}>{action?.label ?? 'Confirm'}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 }

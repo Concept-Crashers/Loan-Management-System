@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, CircleDollarSign, ClipboardCheck, ClipboardList, Download, Ellipsis, ExternalLink, Eye, EyeOff, FilePenLine, FileSearch, FileText, HandCoins, KeyRound, List, MessageCircle, Plus, Printer, RefreshCw, Replace, Save, Search, Send, ShieldAlert, SlidersHorizontal, StickyNote, Undo2, UserCheck, UserCog, UserMinus, UserPlus, Wallet, X, XCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -46,12 +46,63 @@ function recordViewValue(key: string, value: unknown): string {
   if (typeof value === 'number') {
     const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase()
     if (normalized.endsWith('minor')) return formatUGX(value / 100)
-    if (/(amount|outstanding|overdue|expected|paid|income|balance|principal|fees|interest)$/.test(normalized)) return formatUGX(value)
+    if (/(amount|outstanding|overdue|expected|paid|income|obligations|balance|principal|fees|interest)$/.test(normalized)) return formatUGX(value)
   }
   if (typeof value === 'string' && /(date|due|submitted|registered|created|updated)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     return formatDate(value)
   }
   return String(value)
+}
+
+function firstRecordValue(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (value !== undefined && value !== null && value !== '') return value
+  }
+  return undefined
+}
+
+function applicationReviewSections(record: Record<string, unknown>): Array<{ title: string; fields: Array<[string, string, unknown]> }> {
+  const customer = typeof record.customer === 'object' && record.customer !== null
+    ? record.customer as Record<string, unknown>
+    : {}
+  const income = firstRecordValue(record, 'incomeMinor', 'income', 'monthlyIncomeMinor', 'monthlyIncome')
+  const obligations = firstRecordValue(record, 'obligationsMinor', 'obligations', 'monthlyObligationsMinor', 'monthlyObligations')
+  const amountKey = typeof record.amountMinor === 'number' ? 'amountMinor' : 'amount'
+  const incomeKey = ['incomeMinor', 'monthlyIncomeMinor'].find((key) => typeof record[key] === 'number') ?? 'income'
+  const obligationsKey = ['obligationsMinor', 'monthlyObligationsMinor'].find((key) => typeof record[key] === 'number') ?? 'obligations'
+  const borrower = firstRecordValue(record, 'customerName', 'applicantName', 'name')
+    ?? firstRecordValue(customer, 'name', 'fullName')
+    ?? (typeof record.customer === 'string' ? record.customer : Object.keys(customer).length ? customer : undefined)
+  return [
+    {
+      title: 'Applicant',
+      fields: [
+        ['Borrower', 'customerName', borrower],
+        ['Customer ID', 'customerNumber', firstRecordValue(record, 'customerNumber', 'customerId') ?? firstRecordValue(customer, 'customerNumber', 'id')],
+        ['Phone', 'customerPhone', firstRecordValue(record, 'customerPhone', 'phone') ?? firstRecordValue(customer, 'phone')],
+        ['Email', 'customerEmail', firstRecordValue(record, 'customerEmail', 'email') ?? firstRecordValue(customer, 'email')],
+        ['Loan officer', 'officerName', firstRecordValue(record, 'officerName', 'officer', 'assignedOfficer')],
+      ],
+    },
+    {
+      title: 'Loan request',
+      fields: [
+        ['Product', 'productName', firstRecordValue(record, 'productName', 'product')],
+        ['Requested amount', amountKey, firstRecordValue(record, 'amountMinor', 'amount')],
+        ['Term', 'tenureMonths', firstRecordValue(record, 'tenureMonths', 'durationMonths', 'duration')],
+        ['Purpose', 'purpose', firstRecordValue(record, 'purpose', 'loanPurpose')],
+        ['Submitted', 'submittedAt', firstRecordValue(record, 'submittedAt', 'submitted', 'createdAt')],
+      ],
+    },
+    {
+      title: 'Affordability',
+      fields: [
+        ['Monthly income', incomeKey, income],
+        ['Existing obligations', obligationsKey, obligations],
+      ],
+    },
+  ]
 }
 
 async function exportRows(rows: TableRow[], title: string, org: OrgInfo) {
@@ -98,11 +149,20 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selected, setSelected] = useState<TableRow | null>(null)
+  const [selectedDetail, setSelectedDetail] = useState<Record<string, unknown> | null>(null)
+  const [selectedDetailLoading, setSelectedDetailLoading] = useState(false)
+  const [selectedDetailError, setSelectedDetailError] = useState<string | null>(null)
+  const [followupEditing, setFollowupEditing] = useState(false)
+  const previewRequestRef = useRef(0)
   const [decisionRequest, setDecisionRequest] = useState<{ row: TableRow; decision: 'approve' | 'reject' } | null>(null)
+  const [decisionApplication, setDecisionApplication] = useState<Record<string, unknown> | null>(null)
   const [decisionNotes, setDecisionNotes] = useState('')
+  const [decisionNotesError, setDecisionNotesError] = useState('')
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
   const [decisionCredit, setDecisionCredit] = useState<CreditAssessment | null>(null)
   const [decisionCreditLoading, setDecisionCreditLoading] = useState(false)
+  const [decisionCreditError, setDecisionCreditError] = useState<string | null>(null)
+  const decisionCreditRequestRef = useRef(0)
   const [actionDialog, setActionDialog] = useState<{ title: string; description: string; reasonLabel: string; confirmLabel: string; danger?: boolean; defaultReason?: string; extra?: ReactNode; run: (reason: string) => Promise<void> } | null>(null)
   const [actionReason, setActionReason] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
@@ -122,6 +182,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   const [editStaffForm, setEditStaffForm] = useState({ name: '', email: '', phone: '', roles: 'loan_officer', branchIds: [] as string[] })
   const [editStaffSaving, setEditStaffSaving] = useState(false)
   const [followupNote, setFollowupNote] = useState('')
+  const [followupSaving, setFollowupSaving] = useState(false)
   const [followupStatus, setFollowupStatus] = useState<'contacted' | 'promise_to_pay' | 'escalated' | 'resolved' | 'open'>('contacted')
   const [followupAssignedTo, setFollowupAssignedTo] = useState('')
   const [followupPromiseDate, setFollowupPromiseDate] = useState('')
@@ -244,6 +305,31 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     if (page > pageCount) setPage(pageCount)
   }, [page, pageCount])
 
+  async function loadSelectedDetail(row: TableRow) {
+    const requestId = ++previewRequestRef.current
+    setSelectedDetail(null)
+    setSelectedDetailError(null)
+    const kinds: Record<string, 'customers' | 'products' | 'applications' | 'loans' | 'payments' | 'disbursements' | 'branches'> = {
+      '/customers': 'customers', '/products': 'products', '/applications': 'applications', '/approvals': 'applications',
+      '/loans': 'loans', '/repayments': 'payments', '/disbursements': 'disbursements', '/branches': 'branches',
+    }
+    const kind = kinds[path]
+    const id = row.recordId ?? row.id
+    if (!kind || !id) {
+      setSelectedDetailLoading(false)
+      return
+    }
+    setSelectedDetailLoading(true)
+    try {
+      const detail = await getRecordDetail(kind, String(id))
+      if (requestId === previewRequestRef.current) setSelectedDetail(detail)
+    } catch (error) {
+      if (requestId === previewRequestRef.current) setSelectedDetailError(error instanceof Error ? error.message : 'Full record details could not be loaded.')
+    } finally {
+      if (requestId === previewRequestRef.current) setSelectedDetailLoading(false)
+    }
+  }
+
   function openRow(row: TableRow) {
     if (path === '/staff' && isSuperAdmin) {
       setEditStaff(row)
@@ -253,32 +339,57 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
     const key = definition.detailKey ? row[definition.detailKey] : undefined
     if (definition.detailBase && key) navigate(`${definition.detailBase}/${encodeURIComponent(String(key))}`)
     else if (path === '/approvals' && row.id) navigate(`/applications/${encodeURIComponent(String(row.id))}`)
-    else setSelected(row)
+    else {
+      setSelected(row)
+      setFollowupEditing(false)
+      void loadSelectedDetail(row)
+    }
   }
 
   async function requestDecision(row: TableRow, decision: 'approve' | 'reject') {
     if (!canReview) { toast.error('Loan approval is not permitted for this account.'); return }
     setDecisionCredit(null)
+    setDecisionCreditError(null)
     const detail = await getRecordDetail('applications', String(row.id)).catch((error) => { toast.error(error instanceof Error ? error.message : 'Application details could not be loaded before decision.'); return null })
     if (!detail) return
     const status = String(detail.status ?? row.status ?? '').toLowerCase()
     if (status === 'approved' || status === 'rejected' || status === 'cancelled') { toast.error(`This application is already ${status}.`); return }
     setDecisionNotes('')
+    setDecisionNotesError('')
+    setDecisionApplication(detail)
     setDecisionRequest({ row: { ...row, status, version: Number(detail.version ?? row.version ?? 1) }, decision })
+    void loadDecisionCredit(String(row.id))
+  }
+
+  async function loadDecisionCredit(applicationId: string) {
+    const requestId = ++decisionCreditRequestRef.current
     setDecisionCreditLoading(true)
-    getLatestCreditAssessment({ applicationId: String(row.id) }).then((c) => setDecisionCredit(c)).catch(() => setDecisionCredit(null)).finally(() => setDecisionCreditLoading(false))
+    setDecisionCreditError(null)
+    try {
+      const assessment = await getLatestCreditAssessment({ applicationId })
+      if (requestId === decisionCreditRequestRef.current) setDecisionCredit(assessment)
+    } catch (error) {
+      if (requestId === decisionCreditRequestRef.current) {
+        setDecisionCredit(null)
+        setDecisionCreditError(error instanceof Error ? error.message : 'Credit assessment could not be loaded.')
+      }
+    } finally {
+      if (requestId === decisionCreditRequestRef.current) setDecisionCreditLoading(false)
+    }
   }
 
   async function confirmDecision() {
     if (!decisionRequest || decisionSubmitting) return
+    const reason = decisionNotes.trim()
+    if (reason.length < 3) { setDecisionNotesError('Enter a decision rationale of at least 3 characters.'); return }
     const { row, decision } = decisionRequest
     const version = Number(row.version ?? 1)
-    const reason = decisionNotes.trim() || (decision === 'approve' ? 'Approved after review.' : 'Rejected after review.')
     setDecisionSubmitting(true)
     try {
       const result = await api.decideApplication(String(row.id), decision === 'approve' ? 'approved' : 'rejected', reason, version)
       toast.success((result as any)?.message || (decision === 'approve' ? 'Application approved successfully.' : 'Application rejected.'))
-      setDecisionRequest(null); setDecisionNotes(''); setDecisionCredit(null)
+      decisionCreditRequestRef.current += 1
+      setDecisionRequest(null); setDecisionApplication(null); setDecisionNotes(''); setDecisionNotesError(''); setDecisionCredit(null); setDecisionCreditError(null); setDecisionCreditLoading(false)
       await loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Decision could not be submitted.')
@@ -298,15 +409,17 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
   }
 
   async function saveFollowup() {
-    if (!selected) return
+    if (!selected || followupSaving) return
+    setFollowupSaving(true)
     try {
       await api.updateCollection(String(selected.id), { status: followupStatus, notes: [followupAssignedTo.trim() ? `Assigned officer: ${followupAssignedTo.trim()}` : '', followupNote.trim()].filter(Boolean).join('\n'), ...(followupPromiseDate ? { promiseDueAt: followupPromiseDate, followUpAt: followupPromiseDate } : {}), ...(followupPromiseAmount ? { promiseAmountMinor: Math.round(Number(followupPromiseAmount) * 100) } : {}) })
       toast.success('Collection case updated')
       setSelected(null)
+      setFollowupEditing(false)
       void loadData()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update follow-up.')
-    }
+    } finally { setFollowupSaving(false) }
   }
 
   async function saveBranch() {
@@ -362,6 +475,18 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
       : path === '/approvals'
         ? <span className="role-notice">Role: <strong>{role || 'Operations'}</strong></span>
         : null
+
+  const previewRecordId = selected?.recordId ?? selected?.id
+  const selectedFullRecordPath = selected && previewRecordId ? ({
+    '/customers': `/customers/${encodeURIComponent(String(previewRecordId))}`,
+    '/products': `/products/${encodeURIComponent(String(previewRecordId))}`,
+    '/applications': `/applications/${encodeURIComponent(String(previewRecordId))}`,
+    '/approvals': `/applications/${encodeURIComponent(String(previewRecordId))}`,
+    '/loans': `/loans/${encodeURIComponent(String(previewRecordId))}`,
+    '/repayments': `/repayments/${encodeURIComponent(String(previewRecordId))}`,
+    '/disbursements': `/disbursements/${encodeURIComponent(String(previewRecordId))}`,
+    '/branches': `/branches/${encodeURIComponent(String(previewRecordId))}`,
+  } as Record<string, string>)[path] : undefined
 
   return (
     <div className="operational-page">
@@ -632,20 +757,26 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
         )}
       </Card>
 
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) { previewRequestRef.current += 1; setSelected(null); setSelectedDetail(null); setFollowupEditing(false) } }}>
         <DialogContent
-          title={path === '/collections' ? 'Collection follow-up' : 'Record details'}
-          description={path === '/collections' ? 'Review the record and document the next customer interaction.' : 'A read-only snapshot of the selected record.'}
+          title={path === '/collections' && followupEditing ? 'Record collection follow-up' : path === '/collections' ? 'Collection case details' : 'Record details'}
+          description={path === '/collections' && followupEditing ? 'Record the latest interaction and the next agreed action.' : path === '/collections' ? 'Review the current case before adding or updating a follow-up.' : 'Review the latest available record information.'}
           className={`record-dialog record-view-dialog ${path === '/collections' ? 'record-followup-dialog' : ''}`}
         >
           {selected && (() => {
+            const record = selectedDetail ?? selected
             const summaryOnly = new Set(['note', 'version', 'id', 'recordid', 'name', 'customer', 'product', 'loan', 'reference', 'ref', 'receiptnumber', 'accountnumber', 'status', 'state'])
-            const fields = Object.entries(selected).filter(([key]) => !summaryOnly.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase()))
-            const metrics = Object.entries(selected).filter(([key, value]) => typeof value === 'number' && /^(amount|outstanding|overdue|expected|paid|balance|principal)$/i.test(key)).slice(0, 3)
-            const heading = recordViewValue('name', selected.name ?? selected.customer ?? selected.product ?? selected.loan ?? 'Record')
-            const reference = recordViewValue('reference', selected.reference ?? selected.ref ?? selected.receiptNumber ?? selected.accountNumber ?? selected.id ?? selected.recordId ?? 'Reference unavailable')
-            const status = selected.status ?? selected.state
+            const isSensitive = (key: string) => ['nationalid', 'nationalidnumber', 'idnumber', 'identificationreference', 'monthlyincome', 'monthlyincomeminor', 'income', 'incomeminor', 'obligations', 'obligationsminor', 'monthlyobligations', 'monthlyobligationsminor', 'outstanding', 'outstandingbalance', 'balance'].includes(key.replace(/[^a-z0-9]/gi, '').toLowerCase())
+            const roleKey = role.replace(/[\s_-]+/g, '').toLowerCase()
+            const fields = Object.entries(record).filter(([key]) => !summaryOnly.has(key.replace(/[^a-z0-9]/gi, '').toLowerCase()) && !['_id', '__v', 'password', 'passwordhash'].includes(key.toLowerCase()))
+            const metrics = Object.entries(record).filter(([key, value]) => typeof value === 'number' && /^(amount|outstanding|overdue|expected|paid|balance|principal)$/i.test(key)).slice(0, 3)
+            const heading = recordViewValue('name', record.name ?? record.customerName ?? record.customer ?? record.product ?? record.loan ?? 'Record')
+            const reference = recordViewValue('reference', record.reference ?? record.ref ?? record.receiptNumber ?? record.accountNumber ?? record.id ?? record.recordId ?? selected.id ?? 'Reference unavailable')
+            const status = record.status ?? record.state
             return <>
+              {selectedDetailLoading && <div className="record-preview-state" role="status"><RefreshCw size={15} className="lf-spin" /> Loading full record details…</div>}
+              {selectedDetailError && <div className="record-preview-error" role="alert"><span>{selectedDetailError}</span><Button variant="outline" size="sm" onClick={() => void loadSelectedDetail(selected)}>Retry</Button></div>}
+              {!selectedDetail && !selectedDetailLoading && path !== '/collections' && <p className="record-preview-caption">{selectedDetailError ? 'Showing the list summary because full details could not be loaded.' : 'Showing a list summary.'}</p>}
               <div className="record-view-summary">
                 <span className="record-view-symbol"><Eye size={19} aria-hidden="true" /></span>
                 <div className="record-view-identity">
@@ -656,53 +787,79 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
                 <div className="record-view-status">{status ? <StatusBadge status={String(status)} /> : <span className="record-view-type">{definition.title}</span>}</div>
               </div>
               {metrics.length > 0 && <div className="record-view-metrics">{metrics.map(([key, value]) => <div className="record-view-metric" key={key}><span>{recordViewLabel(key)}</span><strong>{recordViewValue(key, value)}</strong></div>)}</div>}
+              {path === '/collections' && followupEditing ? <>
+                <div className="record-view-fields-heading"><h3>Previous interaction</h3></div>
+                <div className="record-view-note">{String(selected.note ?? 'No notes recorded yet.')}</div>
+                <div className="record-view-fields-heading"><h3>Next follow-up</h3><span>Changes are saved to the case history</span></div>
+                <div className="record-followup-form">
+                  <label><span>Outcome</span><Select value={followupStatus} onChange={(e) => setFollowupStatus(e.target.value as typeof followupStatus)}><option value="contacted">Contacted</option><option value="promise_to_pay">Promise to pay</option><option value="escalated">Escalated</option><option value="resolved">Resolved</option><option value="open">Open / awaiting response</option></Select></label>
+                  <label><span>Assigned officer</span><Input value={followupAssignedTo} placeholder="Officer name or user ID" onChange={(event) => setFollowupAssignedTo(event.target.value)} maxLength={120} /></label>
+                  <label><span>Promise amount (UGX)</span><Input type="number" min="0" step="1" inputMode="numeric" value={followupPromiseAmount} onChange={(event) => setFollowupPromiseAmount(event.target.value)} placeholder="Optional promise amount" /></label>
+                  <label><span>Promise / follow-up date</span><Input type="date" value={followupPromiseDate} onChange={(event) => setFollowupPromiseDate(event.target.value)} /></label>
+                  <label className="record-followup-wide"><span>Interaction / promise details</span><Textarea rows={4} value={followupNote} placeholder="Record the interaction, agreed promise and next steps…" onChange={(event) => setFollowupNote(event.target.value)} maxLength={1000} /></label>
+                </div>
+              </> : <>
               <div className="record-view-fields-heading"><h3>Record information</h3><span>{fields.length} {fields.length === 1 ? 'field' : 'fields'}</span></div>
               {fields.length ? <div className="record-detail-grid">
                 {fields.map(([key, value]) => <div className="record-field" key={key}>
                   <span>{recordViewLabel(key)}</span>
-                  <strong>{recordViewValue(key, value)}</strong>
+                  <strong>{isSensitive(key) && ['cashier', 'collectionsofficer'].includes(roleKey) ? 'Restricted' : recordViewValue(key, value)}</strong>
                 </div>)}
               </div> : <div className="record-view-empty">No additional record fields are available.</div>}
+              </>}
             </>
           })()}
-          {path === '/collections' && (
-            <div className="followup-note">
-              <span>Previous note</span>
-              <p>{String(selected?.note ?? 'No notes recorded yet.')}</p>
-              <span>Status / action</span>
-              <Select value={followupStatus} onChange={(e) => setFollowupStatus(e.target.value as any)}>
-                <option value="contacted">Contacted</option><option value="promise_to_pay">Promise to pay</option><option value="escalated">Escalated</option><option value="resolved">Resolved</option><option value="open">Open / awaiting response</option>
-              </Select>
-              <span>Assigned officer</span>
-              <Input value={followupAssignedTo} placeholder="Officer name or user ID" onChange={(event) => setFollowupAssignedTo(event.target.value)} maxLength={120} />
-              <span>Promise amount (UGX)</span>
-              <Input type="number" min="0" step="1" inputMode="numeric" value={followupPromiseAmount} onChange={(event) => setFollowupPromiseAmount(event.target.value)} placeholder="Optional promise amount" />
-              <span>Promise / follow-up date</span>
-              <Input type="date" value={followupPromiseDate} onChange={(event) => setFollowupPromiseDate(event.target.value)} />
-              <span>Interaction / promise details</span>
-              <Textarea rows={4} value={followupNote} placeholder="Record interaction details, promise amount/date, and next steps…" onChange={(event) => setFollowupNote(event.target.value)} maxLength={1000} />
-            </div>
-          )}
           <div className="dialog-actions">
-            <Button variant="outline" icon={X} onClick={() => setSelected(null)}>Close</Button>
-            {path === '/collections' && <Button icon={Save} onClick={saveFollowup}>Save follow-up</Button>}
+            <Button variant="outline" icon={X} onClick={() => { previewRequestRef.current += 1; setSelected(null); setFollowupEditing(false) }}>{path === '/collections' && followupEditing ? 'Cancel' : 'Close'}</Button>
+            {path === '/collections' && !followupEditing && <Button icon={FilePenLine} onClick={() => setFollowupEditing(true)}>Record follow-up</Button>}
+            {path === '/collections' && followupEditing && <Button icon={Save} loading={followupSaving} onClick={() => void saveFollowup()}>Save follow-up</Button>}
+            {selectedFullRecordPath && <Button variant="outline" icon={ExternalLink} onClick={() => { setSelected(null); navigate(selectedFullRecordPath) }}>Open full record</Button>}
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!decisionRequest} onOpenChange={(open) => { if (!open) { setDecisionRequest(null); setDecisionCredit(null) } }}>
-        <DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application`} description="Submit an underwriting decision to the server." className="record-dialog">
-          <div className="followup-note">
-            <span>Application</span>
-            <p>{String(decisionRequest?.row.id ?? '—')} · {String(decisionRequest?.row.customer ?? 'Applicant')} · status: {String(decisionRequest?.row.status ?? '—')} · v{String(decisionRequest?.row.version ?? 1)}</p>
-            <span>Credit score</span>
-            <p>{decisionCreditLoading ? 'Loading credit score…' : decisionCredit ? `Score ${decisionCredit.score ?? '—'} · ${String(decisionCredit.grade ?? '—')} · ${String(decisionCredit.riskLevel ?? '—').replaceAll('_', ' ')} · ${String(decisionCredit.recommendation ?? '—').replaceAll('_', ' ')}` : 'No saved credit score. Use “Calculate credit score” from the approvals row menu, then reopen this decision if needed.'}</p>
-            <span>Decision notes</span>
-            <Textarea rows={4} value={decisionNotes} placeholder="Reason or underwriting conditions..." onChange={(event) => setDecisionNotes(event.target.value)} maxLength={500} />
+      <Dialog open={!!decisionRequest} onOpenChange={(open) => { if (!open && !decisionSubmitting) { decisionCreditRequestRef.current += 1; setDecisionRequest(null); setDecisionApplication(null); setDecisionCredit(null); setDecisionCreditError(null); setDecisionCreditLoading(false); setDecisionNotesError('') } }}>
+        <DialogContent title={`${decisionRequest?.decision === 'approve' ? 'Approve' : 'Reject'} application`} description="Review the request, affordability and credit assessment before recording your decision." className="record-dialog decision-dialog">
+          {decisionRequest && decisionApplication && (() => {
+            const sections = applicationReviewSections(decisionApplication)
+            const attachments = Array.isArray(decisionApplication.attachments) ? decisionApplication.attachments as Array<Record<string, unknown>> : []
+            const comments = Array.isArray(decisionApplication.reviewComments) ? decisionApplication.reviewComments as Array<Record<string, unknown>> : []
+            return <>
+              <div className="decision-application-banner">
+                <div><span>Application reference</span><strong>{String(decisionApplication.reference ?? decisionApplication.applicationNumber ?? decisionRequest.row.id)}</strong></div>
+                <div className="decision-banner-status"><StatusBadge status={String(decisionApplication.status ?? decisionRequest.row.status ?? 'Submitted')} /><small>Record version {String(decisionApplication.version ?? decisionRequest.row.version ?? 1)}</small></div>
+              </div>
+              <div className="decision-review-sections">
+                {sections.map((section) => {
+                  const fields = section.fields.filter(([, , value]) => value !== undefined && value !== null && value !== '')
+                  return fields.length ? <section className="decision-review-section" key={section.title}><h3>{section.title}</h3><div className="decision-review-fields">{fields.map(([label, key, value]) => {
+                    const shownValue = label === 'Term' && /^\d+(?:\.\d+)?$/.test(String(value))
+                      ? `${String(value)} months`
+                      : recordViewValue(String(key), value)
+                    return <div key={label}><span>{label}</span><strong>{shownValue}</strong></div>
+                  })}</div></section> : null
+                })}
+              </div>
+              {decisionCreditLoading ? <div className="decision-credit-state" role="status"><RefreshCw size={15} className="lf-spin" /> Loading the latest credit assessment…</div>
+                : decisionCreditError ? <div className="decision-credit-error" role="alert"><div><strong>Credit assessment unavailable</strong><span>{decisionCreditError}</span></div><Button variant="outline" size="sm" onClick={() => void loadDecisionCredit(String(decisionRequest.row.id))}>Retry</Button></div>
+                : decisionCredit ? <section className="decision-credit-card"><div className="decision-credit-score"><span>Credit score</span><strong>{decisionCredit.score ?? '—'}<small> / 100</small></strong></div><div className="decision-credit-meta"><span><small>Grade</small><strong>{decisionCredit.grade ?? '—'}</strong></span><span><small>Risk</small><strong>{String(decisionCredit.riskLevel ?? '—').replaceAll('_', ' ')}</strong></span><span><small>Recommendation</small><strong>{String(decisionCredit.recommendation ?? '—').replaceAll('_', ' ')}</strong></span></div>{!!decisionCredit.riskIndicators?.length && <p>{decisionCredit.riskIndicators.join(' · ')}</p>}</section>
+                : <div className="decision-credit-state">No saved credit assessment is available for this application.</div>}
+              <div className="decision-review-section decision-attachments"><h3>Supporting documents</h3>{attachments.length ? <ul>{attachments.map((item, index) => {
+                const url = String(item.reference ?? '')
+                const canOpen = /^https?:\/\//i.test(url)
+                return <li key={String(item._id ?? item.name ?? index)}><FileText size={14} /><span>{String(item.name ?? item.kind ?? `Attachment ${index + 1}`)}</span><small>{String(item.kind ?? 'Document')}</small>{canOpen && <a href={url} target="_blank" rel="noopener noreferrer">Open</a>}</li>
+              })}</ul> : <p>No supporting documents are attached to this application.</p>}</div>
+              {comments.length > 0 && <div className="decision-review-section decision-comments"><h3>Recent review comments</h3><ul>{comments.slice(-3).reverse().map((comment, index) => <li key={String(comment._id ?? comment.at ?? index)}><strong>{String(comment.kind ?? 'Review')}</strong><span>{String(comment.body ?? '')}</span><small>{comment.at ? formatDate(String(comment.at)) : ''}{comment.actorName ? ` · ${String(comment.actorName)}` : ''}</small></li>)}</ul></div>}
+            </>
+          })()}
+          <div className="decision-rationale">
+            <label htmlFor="decision-rationale">Decision rationale <span>Required</span></label>
+            <Textarea id="decision-rationale" rows={3} value={decisionNotes} aria-invalid={!!decisionNotesError} aria-describedby={decisionNotesError ? 'decision-rationale-error' : 'decision-rationale-hint'} placeholder={decisionRequest?.decision === 'approve' ? 'Document the basis for approval and any conditions…' : 'Explain the reason for rejection…'} onChange={(event) => { setDecisionNotes(event.target.value); setDecisionNotesError('') }} maxLength={500} required />
+            {decisionNotesError ? <small id="decision-rationale-error" className="field-error" role="alert">{decisionNotesError}</small> : <small id="decision-rationale-hint" className="decision-rationale-hint">At least 3 characters · {decisionNotes.length}/500</small>}
           </div>
           <div className="dialog-actions">
-            <Button variant="outline" icon={X} disabled={decisionSubmitting} onClick={() => { setDecisionRequest(null); setDecisionCredit(null) }}>Cancel</Button>
-            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} icon={Check} loading={decisionSubmitting} onClick={() => void confirmDecision()}>
+            <Button variant="outline" icon={X} disabled={decisionSubmitting} onClick={() => { decisionCreditRequestRef.current += 1; setDecisionRequest(null); setDecisionApplication(null); setDecisionCredit(null); setDecisionCreditError(null); setDecisionCreditLoading(false) }}>Cancel</Button>
+            <Button variant={decisionRequest?.decision === 'reject' ? 'danger' : 'primary'} icon={Check} loading={decisionSubmitting} disabled={decisionNotes.trim().length < 3} onClick={() => void confirmDecision()}>
               Confirm {decisionRequest?.decision}
             </Button>
           </div>
