@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { Building2, Check, CreditCard, FileText, LockKeyhole, Mail, Save, ShieldCheck, Smartphone, SlidersHorizontal, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ export function SettingsPage() {
   const [country, setCountry] = useState(branding.country)
   const [currency, setCurrency] = useState(branding.currency)
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(branding.logoDataUrl)
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(branding.signatureDataUrl)
   const [legalName, setLegalName] = useState('')
   const [registrationNumber, setRegistrationNumber] = useState('')
   const [primaryContact, setPrimaryContact] = useState('')
@@ -45,6 +46,7 @@ export function SettingsPage() {
   const isSuperAdmin = (me?.roles ?? []).some((r) => ['super_admin','super-admin','superadmin'].includes(String(r).toLowerCase().replace(/[\s-]+/g, '_')))
   const canManageRoles = isSuperAdmin || (me?.permissions ?? []).includes('*') || (me?.permissions ?? []).includes('identity.roles.manage')
   const canViewRoles = isSuperAdmin || canManageRoles || (me?.permissions ?? []).includes('identity.roles.view')
+  const canManageDocSignature = isSuperAdmin || (me?.roles ?? []).some((role) => String(role).toLowerCase().replace(/[\s-]+/g, '_') === 'admin') || (me?.permissions ?? []).includes('*') || (me?.permissions ?? []).includes('organisation.settings.manage')
 
   async function loadRoles() {
     if (!canViewRoles) return
@@ -76,6 +78,7 @@ export function SettingsPage() {
         setAddress(s.organisation.address ?? '')
         setCurrency((s.branding.currency ?? branding.currency) || 'UGX')
         if (s.branding.logoUrl) setLogoDataUrl(s.branding.logoUrl)
+        setSignatureDataUrl(s.branding.signatureUrl || null)
         setDefaultBranchId(s.preferences?.defaultBranchId ?? '')
         setDefaultFrequency(s.preferences?.defaultRepaymentFrequency ?? 'Monthly')
         setReceiptFormat(s.preferences?.receiptReferenceFormat ?? 'RCT-{YYYY}-{SEQ}')
@@ -95,7 +98,7 @@ export function SettingsPage() {
   function buildPayload(): OrganisationSettings {
     return {
       organisation: { name: companyName, legalName, registrationNumber, address, phone: primaryContact, email: supportEmail },
-      branding: { currency, logoUrl: logoDataUrl ?? '', primaryColor: '#2563eb', secondaryColor: '#0f172a' },
+      branding: { currency, logoUrl: logoDataUrl ?? '', signatureUrl: signatureDataUrl ?? '', primaryColor: '#2563eb', secondaryColor: '#0f172a' },
       preferences: { defaultBranchId, defaultRepaymentFrequency: defaultFrequency, receiptReferenceFormat: receiptFormat, notifications: toggles },
     }
   }
@@ -104,10 +107,28 @@ export function SettingsPage() {
     setSaving(label)
     try {
       const saved = await saveOrganisationSettings(buildPayload())
-      dispatch(setBranding({ companyName: saved.organisation.name, tagline, country, currency: saved.branding.currency ?? currency, logoDataUrl: saved.branding.logoUrl || null }))
+      dispatch(setBranding({ companyName: saved.organisation.name, tagline, country, currency: saved.branding.currency ?? currency, logoDataUrl: saved.branding.logoUrl || null, signatureDataUrl: saved.branding.signatureUrl || null }))
       toast.success(`${label} saved`, { description: 'Settings persisted to the server for this tenant.' })
     } catch (error) { toast.error(error instanceof Error ? error.message : `${label} could not be saved.`) }
     finally { setSaving(null) }
+  }
+
+  function readSignatureFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      toast.error('Signature must be a PNG or JPG image.')
+      return
+    }
+    if (file.size > 600 * 1024) {
+      toast.error('Signature must be 600 KB or smaller.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => toast.error('Signature image could not be read.')
+    reader.onload = () => setSignatureDataUrl(String(reader.result))
+    reader.readAsDataURL(file)
   }
 
   const selected = roleCatalog?.roles.find((r) => r.normalizedRole === selectedRole) ?? null
@@ -135,9 +156,10 @@ export function SettingsPage() {
   }
 
   return <div className="settings-page"><div className="page-heading"><div><div className="eyebrow">MANAGEMENT <span className="eyebrow-separator">/</span> CONFIGURATION</div><h1>Settings</h1><p>Configure workspace branding, notifications, role permissions, and loan defaults.</p></div><div className="heading-actions"><span className="settings-save-note"><span className="online-dot" /> {loading ? 'Loading server settings…' : 'Tenant settings synced from server'}</span></div></div>
-    <Tabs.Root className="settings-tabs" defaultValue="company"><Tabs.List className="settings-tab-list"><Tabs.Trigger value="company"><Building2 size={15} /> Company</Tabs.Trigger><Tabs.Trigger value="notifications"><Mail size={15} /> Notifications</Tabs.Trigger><Tabs.Trigger value="roles"><Users size={15} /> Roles & permissions</Tabs.Trigger><Tabs.Trigger value="payments"><CreditCard size={15} /> Loan defaults</Tabs.Trigger></Tabs.List>
+    <Tabs.Root className="settings-tabs" defaultValue="company"><Tabs.List className="settings-tab-list"><Tabs.Trigger value="company"><Building2 size={15} /> Company</Tabs.Trigger>{canManageDocSignature && <Tabs.Trigger value="signature"><FileText size={15} /> Document signature</Tabs.Trigger>}<Tabs.Trigger value="notifications"><Mail size={15} /> Notifications</Tabs.Trigger><Tabs.Trigger value="roles"><Users size={15} /> Roles & permissions</Tabs.Trigger><Tabs.Trigger value="payments"><CreditCard size={15} /> Loan defaults</Tabs.Trigger></Tabs.List>
       <Tabs.Content value="company" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Company profile</h2><p>Business identity shown across customer records, authentication and receipts.</p></div></div><div className="company-logo-row"><div className="company-logo-mark">{logoDataUrl ? <img className="brand-logo-image" src={logoDataUrl} alt="Company logo preview" /> : <span className="brand-mark"><span /><span /><span /></span>}</div><div><strong>Logo and identity</strong><small>PNG, JPG or SVG · stored on the server (max 2 MB)</small></div><label className="lf-button lf-button-outline lf-button-sm">Change logo<input hidden type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { toast.error('Logo must be 2 MB or smaller.'); return }; const reader = new FileReader(); reader.onload = () => setLogoDataUrl(String(reader.result)); reader.readAsDataURL(file) }} /></label></div><div className="settings-form-grid"><Field label="Company name"><Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></Field><Field label="Brand tagline"><Input value={tagline} onChange={(event) => setTagline(event.target.value)} /></Field><Field label="Registration number"><Input value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="e.g. UMRA registration" /></Field><Field label="Primary contact" hint="Choose a calling code and enter the local number."><PhoneNumberInput value={primaryContact} onChange={setPrimaryContact} /></Field><Field label="Support email"><Input type="email" value={supportEmail} onChange={(event) => setSupportEmail(event.target.value)} placeholder="support@example.com" /></Field><Field label="Country"><Input value={country} onChange={(event) => setCountry(event.target.value)} /></Field><Field label="Legal name"><Input value={legalName} onChange={(event) => setLegalName(event.target.value)} /></Field><Field label="Default currency"><Input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} /></Field><Field label="Address" className="field-span-2"><Input value={address} onChange={(event) => setAddress(event.target.value)} /></Field></div><div className="settings-panel-footer"><span><ShieldCheck size={14} /> Branding updates apply system-wide after saving.</span><Button icon={Save} loading={saving === 'Company profile'} onClick={() => save('Company profile')}>Save changes</Button></div></Card>
         <Card className="settings-panel settings-branch-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Branch defaults</h2><p>Select a default branch from branches configured in the system and save it to tenant preferences.</p></div></div><div className="settings-inline-row"><div><strong>Default operational branch</strong><small>Saved with tenant preferences. This sets the organisation default; staff must still be assigned to that branch in Staff & Users to see/register its customers.</small></div><Select value={defaultBranchId} onChange={(event) => setDefaultBranchId(event.target.value)}><option value="">No default branch</option>{branches.map((b) => <option key={String((b as any).branchId ?? b.id)} value={String((b as any).branchId ?? b.id)}>{b.name}{b.district ? ` · ${b.district}` : ''}</option>)}</Select></div>{!branches.length && !loading && <div className="notification-future-note"><Building2 size={15} /> No branches loaded. Create branches first, or ensure you have <code>branches.view</code> permission and refresh this page.</div>}<div className="settings-panel-footer"><span /> <Button icon={Save} loading={saving === 'Branch defaults'} onClick={() => save('Branch defaults')}>Save branch default</Button></div></Card></Tabs.Content>
+      {canManageDocSignature && <Tabs.Content value="signature" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><FileText size={18} /></div><div><h2>Authorised document signature</h2><p>Upload an authorised signatory image for payment receipts, disbursement receipts, and loan statements.</p></div></div><div className="company-logo-row"><div className="company-logo-mark signature-preview">{signatureDataUrl ? <img className="brand-logo-image" src={signatureDataUrl} alt="Authorised signature preview" /> : <span className="signature-empty">No signature uploaded</span>}</div><div><strong>Signature image</strong><small>Transparent PNG recommended · PNG or JPG · max 600 KB</small></div><label className="lf-button lf-button-outline lf-button-sm">Upload signature<input hidden type="file" accept="image/png,image/jpeg" onChange={readSignatureFile} /></label>{signatureDataUrl && <Button variant="outline" onClick={() => setSignatureDataUrl(null)}>Remove</Button>}</div><div className="settings-panel-footer"><span><ShieldCheck size={14} /> The image is stored in this tenant’s organisation settings.</span><Button icon={Save} loading={saving === 'Document signature'} onClick={() => save('Document signature')}>Save signature</Button></div></Card></Tabs.Content>}
       <Tabs.Content value="notifications" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Mail size={18} /></div><div><h2>Notification preferences</h2><p>Choose which events staff see; preferences are saved to the server.</p></div></div><div className="notification-settings-list">{([{ key: 'appSubmitted', title: 'Application submitted', description: 'Alert the review team when a borrower request enters the queue.', icon: FileText }, { key: 'repaymentSoon', title: 'Upcoming repayment', description: 'Surface reminders ahead of a scheduled payment date.', icon: Smartphone }, { key: 'paymentReceived', title: 'Repayment received', description: 'Confirm recorded payment activity for the servicing team.', icon: Check }, { key: 'repaymentOverdue', title: 'Repayment overdue', description: 'Show a follow-up task when an installment becomes overdue.', icon: ShieldCheck }, { key: 'weeklySummary', title: 'Weekly portfolio summary', description: 'Prepare a weekly management digest for authorized staff.', icon: SlidersHorizontal }] as const).map(({ key, title, description, icon: Icon }) => <div className="notification-setting" key={key}><span className="notification-setting-icon"><Icon size={17} /></span><span className="notification-setting-copy"><strong>{title}</strong><small>{description}</small></span><button className={`toggle-switch ${toggles[key] ? 'toggle-on' : ''}`} role="switch" aria-checked={toggles[key]} onClick={() => toggle(key)} aria-label={`Toggle ${title}`}><span /></button></div>)}</div><div className="notification-future-note"><Mail size={15} /> SMS and email delivery requires provider configuration; preferences are stored now.</div><div className="settings-panel-footer"><span>Save to persist preferences for this tenant.</span><Button icon={Save} loading={saving === 'Notification preferences'} onClick={() => save('Notification preferences')}>Save preferences</Button></div></Card></Tabs.Content>
       <Tabs.Content value="roles" className="settings-tab-content">
         {!canViewRoles ? <Card className="settings-panel"><div className="access-warning"><LockKeyhole size={15} />You do not have permission to view role permissions (`identity.roles.view`). Ask a super admin.</div></Card> : <>

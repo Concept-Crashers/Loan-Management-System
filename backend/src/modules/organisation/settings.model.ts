@@ -12,6 +12,7 @@ const settingsSchema = new Schema({
   },
   branding: {
     logoUrl: { type: String, default: '' },
+    signatureUrl: { type: String, default: '' },
     primaryColor: { type: String, default: '#2563eb' },
     secondaryColor: { type: String, default: '#0f172a' },
     currency: { type: String, default: 'UGX' },

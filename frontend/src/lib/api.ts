@@ -108,7 +108,7 @@ export function getMe() {
 
 export interface OrganisationSettings {
   organisation: { name: string; legalName?: string; registrationNumber?: string; address?: string; phone?: string; email?: string }
-  branding: { logoUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string }
+  branding: { logoUrl?: string; signatureUrl?: string; primaryColor?: string; secondaryColor?: string; currency?: string }
   preferences?: { defaultBranchId?: string; defaultRepaymentFrequency?: string; receiptReferenceFormat?: string; notifications?: Record<string, boolean> }
 }
 

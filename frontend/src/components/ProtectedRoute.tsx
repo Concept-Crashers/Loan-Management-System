@@ -34,10 +34,10 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     getPublicBranding().then((b) => {
       if (!b) return
-      dispatch(setBranding({ companyName: b.name || 'Trust Loans', tagline: b.tagline || 'LOAN OPERATIONS', country: branding.country, currency: b.currency || branding.currency, logoDataUrl: b.logoUrl || branding.logoDataUrl }))
+      dispatch(setBranding({ companyName: b.name || 'Trust Loans', tagline: b.tagline || 'LOAN OPERATIONS', country: branding.country, currency: b.currency || branding.currency, logoDataUrl: b.logoUrl || branding.logoDataUrl, signatureDataUrl: branding.signatureDataUrl }))
       applyBrandingToDocument({ name: b.name, logoUrl: b.logoUrl, primaryColor: b.primaryColor })
     }).catch(() => {})
-  }, [branding.country, branding.currency, branding.logoDataUrl, dispatch])
+  }, [branding.country, branding.currency, branding.logoDataUrl, branding.signatureDataUrl, dispatch])
 
   useEffect(() => {
     if (status !== 'unknown') return
@@ -46,7 +46,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
       if (!user) { dispatch(setAuthStatus('anonymous')); return }
       try {
         const settings = await getOrganisationSettings()
-        const next = { companyName: settings.organisation.name, tagline: branding.tagline, country: branding.country, currency: settings.branding.currency ?? 'UGX', logoDataUrl: settings.branding.logoUrl || null }
+        const next = { companyName: settings.organisation.name, tagline: branding.tagline, country: branding.country, currency: settings.branding.currency ?? 'UGX', logoDataUrl: settings.branding.logoUrl || null, signatureDataUrl: settings.branding.signatureUrl || null }
         dispatch(setBranding(next))
         applyBrandingToDocument({ name: next.companyName, logoUrl: next.logoDataUrl, primaryColor: settings.branding.primaryColor })
       } catch {}

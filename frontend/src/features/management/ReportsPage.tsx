@@ -7,7 +7,7 @@ import { shareBlob } from '../../lib/api'
 import { api } from '../../lib/services'
 import { formatUGX } from '../../lib/format'
 import type { Application, CollectionRecord, Customer, LoanAccount, Repayment, Transaction } from '../../lib/types'
-import { exportReportExcel, type OrgInfo } from '../../lib/exportDocs'
+import { exportReportExcel, exportReportPDF, type OrgInfo } from '../../lib/exportDocs'
 import type { RootState } from '../../store/store'
 
 export function ReportsPage() {
@@ -177,7 +177,7 @@ export function ReportsPage() {
   const overdueLoans = useMemo(() => loans.filter((l) => l.status === 'Overdue'), [loans])
   const parRate = totalOutstanding > 0 ? ((overdueLoans.reduce((sum, l) => sum + (l.outstanding || 0), 0) / totalOutstanding) * 100).toFixed(1) : '0.0'
 
-  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null, signatureDataUrl: branding.signatureDataUrl || null }
   const reportOptions = {
     reportLabel: report.label,
     reportKey: report.key,
@@ -214,6 +214,18 @@ export function ReportsPage() {
       setSharing(false)
     }
   }
+  async function printPdfReport() {
+    if (!rows.length) { toast.info('There are no rows to print for the selected filters.'); return }
+    setExporting(true)
+    try {
+      await exportReportPDF(reportOptions)
+      toast.success('Print-ready PDF downloaded')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'PDF report could not be generated.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="reports-page">
@@ -224,7 +236,7 @@ export function ReportsPage() {
           <p>Portfolio data and financial exports from the live database.</p>
         </div>
         <div className="heading-actions">
-          <button className="button-print" onClick={() => window.print()}><Printer size={15} /> Print / PDF</button>
+          <button className="button-print" disabled={exporting || sharing} onClick={() => void printPdfReport()}><Printer size={15} /> Print / PDF</button>
           <Button loading={exporting} disabled={sharing} icon={ArrowDownToLine} onClick={() => void downloadExcel()}>Export Excel</Button>
           <Button variant="outline" loading={sharing} disabled={exporting} icon={MessageCircle} onClick={() => void shareExcel()}>Share via WhatsApp</Button>
         </div>

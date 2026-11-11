@@ -10,7 +10,7 @@ import { env } from '../../config/env.js'
 const router = Router()
 const settingsInput = z.object({
   organisation: z.object({ name: z.string().min(2), legalName: z.string().max(200).optional(), registrationNumber: z.string().max(100).optional(), address: z.string().max(500).optional(), phone: z.string().max(50).optional(), email: z.string().email().or(z.literal('')).optional() }),
-  branding: z.object({ logoUrl: z.string().max(2_000_000).optional(), primaryColor: z.string().max(20).optional(), secondaryColor: z.string().max(20).optional(), currency: z.string().length(3).optional() }),
+  branding: z.object({ logoUrl: z.string().max(2_000_000).optional(), signatureUrl: z.string().max(2_000_000).optional(), primaryColor: z.string().max(20).optional(), secondaryColor: z.string().max(20).optional(), currency: z.string().length(3).optional() }),
   preferences: z.object({ defaultBranchId: z.string().optional(), defaultRepaymentFrequency: z.string().optional(), receiptReferenceFormat: z.string().max(80).optional(), notifications: z.record(z.string(), z.boolean()).optional() }).optional(),
 })
 

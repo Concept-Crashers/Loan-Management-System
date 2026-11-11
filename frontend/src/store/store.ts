@@ -3,11 +3,11 @@ import type { AuthUser } from '../lib/api'
 
 type Theme = 'light' | 'dark'
 interface SessionState { role: string; sidebarOpen: boolean; theme: Theme; user: AuthUser | null; authStatus: 'unknown' | 'authenticated' | 'anonymous' }
-export interface BrandingState { companyName: string; tagline: string; country: string; currency: string; logoDataUrl: string | null }
-const defaultBranding: BrandingState = { companyName: 'Trust Loans', tagline: 'LOAN OPERATIONS', country: 'Uganda', currency: 'UGX', logoDataUrl: null }
+export interface BrandingState { companyName: string; tagline: string; country: string; currency: string; logoDataUrl: string | null; signatureDataUrl: string | null }
+const defaultBranding: BrandingState = { companyName: 'Trust Loans', tagline: 'LOAN OPERATIONS', country: 'Uganda', currency: 'UGX', logoDataUrl: null, signatureDataUrl: null }
 function loadBranding(): BrandingState {
   if (typeof window === 'undefined') return defaultBranding
-  try { return { ...defaultBranding, ...JSON.parse(window.localStorage.getItem('lendflow-branding') ?? '{}') } as BrandingState } catch { return defaultBranding }
+  try { return { ...defaultBranding, ...JSON.parse(window.localStorage.getItem('lendflow-branding') ?? '{}'), signatureDataUrl: null } as BrandingState } catch { return defaultBranding }
 }
 const initialTheme: Theme = typeof window !== 'undefined' && window.localStorage.getItem('lendflow-theme') === 'dark' ? 'dark' : 'light'
 const initialState: SessionState = { role: '', sidebarOpen: false, theme: initialTheme, user: null, authStatus: 'unknown' }
@@ -16,7 +16,11 @@ const brandingSlice = createSlice({
   initialState: loadBranding(),
   reducers: {
     setBranding(_state, action: PayloadAction<BrandingState>) {
-      if (typeof window !== 'undefined') window.localStorage.setItem('lendflow-branding', JSON.stringify(action.payload))
+      if (typeof window !== 'undefined') {
+        const { signatureDataUrl, ...persistedBranding } = action.payload
+        void signatureDataUrl
+        window.localStorage.setItem('lendflow-branding', JSON.stringify(persistedBranding))
+      }
       return action.payload
     },
   },

@@ -90,7 +90,7 @@ function ScheduleCalendar({ rows, onOpen, month, setMonth }: { rows: TableRow[];
 
 export function OperationalPage({ definition, path }: { definition: PageDefinition; path: string }) {
   const branding = useSelector((state: RootState) => state.branding)
-  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null, signatureDataUrl: branding.signatureDataUrl || null }
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
   const [branchScope, setBranchScope] = useState('all')

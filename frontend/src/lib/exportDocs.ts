@@ -17,6 +17,7 @@ export interface OrgInfo {
   country: string
   currency: string
   logoDataUrl: string | null
+  signatureDataUrl?: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -101,23 +102,66 @@ const TEXT_DARK: [number, number, number] = [30, 45, 70]
 const TEXT_MUTED: [number, number, number] = [110, 125, 145]
 const BORDER: [number, number, number] = [220, 228, 238]
 
-async function orgLogoPng(org: OrgInfo): Promise<string | null> {
-  if (!org.logoDataUrl) return null
+async function imageDataUrlPng(source: string | null | undefined, imageLabel: string): Promise<string | null> {
+  if (!source) return null
   try {
-    const response = await fetch(org.logoDataUrl)
-    if (!response.ok) throw new Error('Logo request failed.')
+    const response = await fetch(source)
+    if (!response.ok) throw new Error(`${imageLabel} request failed.`)
     const bitmap = await createImageBitmap(await response.blob())
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('Logo image could not be rendered.')
+    if (!context) throw new Error(`${imageLabel} could not be rendered.`)
     context.drawImage(bitmap, 0, 0)
     bitmap.close()
     return canvas.toDataURL('image/png')
   } catch {
-    throw new Error('The configured organisation logo could not be loaded for this PDF. Check the logo URL or upload the logo again.')
+    throw new Error(`The configured ${imageLabel.toLowerCase()} could not be loaded for this PDF. Check the image or upload it again.`)
   }
+}
+
+function orgLogoPng(org: OrgInfo): Promise<string | null> {
+  return imageDataUrlPng(org.logoDataUrl, 'organisation logo')
+}
+
+function orgSignaturePng(org: OrgInfo): Promise<string | null> {
+  return imageDataUrlPng(org.signatureDataUrl, 'authorised signature')
+}
+
+async function addDocumentWatermark(doc: jsPDF, logo: string | null) {
+  if (!logo) return
+  const response = await fetch(logo)
+  if (!response.ok) throw new Error('The organisation logo could not be prepared as a document watermark.')
+  const bitmap = await createImageBitmap(await response.blob())
+  const canvas = document.createElement('canvas')
+  canvas.width = 360
+  canvas.height = 360
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('The organisation logo watermark could not be rendered.')
+  context.globalAlpha = 0.075
+  const scale = Math.min(canvas.width / bitmap.width, canvas.height / bitmap.height)
+  const width = bitmap.width * scale
+  const height = bitmap.height * scale
+  context.drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+  bitmap.close()
+  const watermark = canvas.toDataURL('image/png')
+  const pages = doc.getNumberOfPages()
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page)
+    doc.addImage(watermark, 'PNG', (pageWidth - 68) / 2, (pageHeight - 68) / 2, 68, 68)
+  }
+}
+
+function drawSignature(doc: jsPDF, signature: string | null, x: number, y: number, maxWidth: number, maxHeight: number) {
+  if (!signature) return
+  const { width, height } = doc.getImageProperties(signature)
+  const scale = Math.min(maxWidth / width, maxHeight / height)
+  const drawWidth = width * scale
+  const drawHeight = height * scale
+  doc.addImage(signature, 'PNG', x + (maxWidth - drawWidth) / 2, y + (maxHeight - drawHeight) / 2, drawWidth, drawHeight)
 }
 
 function drawOrgLogo(doc: jsPDF, logo: string | null, org: OrgInfo, x: number, y: number, size: number) {
@@ -323,6 +367,7 @@ export async function exportReportPDF(options: ReportPDFOptions): Promise<Blob |
     })
   }
 
+  await addDocumentWatermark(doc, logo)
   if (!save) return doc.output('blob') as Blob
   doc.save(filename)
 }
@@ -454,6 +499,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
 
   const { repayment, loan, org, save = true, filename } = data
   const logo = await orgLogoPng(org)
+  const signature = repayment.status === 'Successful' ? await orgSignaturePng(org) : null
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -482,6 +528,10 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   // Gold line
   doc.setFillColor(...GOLD)
   doc.rect(0, 32, W, 1.2, 'F')
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(...TEXT_MUTED)
+  doc.text(`Generated: ${fmtDateTime(now)}`, W - 10, 39, { align: 'right' })
 
   let y = 42
 
@@ -614,17 +664,18 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   doc.text('Authorised Signature:', 20, footerY + 18)
   doc.setDrawColor(...TEXT_MUTED)
   doc.line(50, footerY + 18, 100, footerY + 18)
+  drawSignature(doc, signature, 51, footerY + 5, 48, 12)
 
   doc.text('Date:', W - 60, footerY + 18)
-  doc.line(W - 50, footerY + 18, W - 20, footerY + 18)
+  doc.text(fmtDate(now.toISOString()), W - 49, footerY + 18)
 
   // Stamp/Seal box
   doc.setDrawColor(...BORDER)
-  doc.roundedRect(W / 2 - 20, footerY + 22, 40, 20, 2, 2, 'S')
+  doc.roundedRect(W / 2 - 20, footerY + 22, 40, 14, 2, 2, 'S')
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(6.5)
   doc.setTextColor(...TEXT_MUTED)
-  doc.text('OFFICIAL STAMP / SEAL', W / 2, footerY + 34, { align: 'center' })
+  doc.text('OFFICIAL STAMP / SEAL', W / 2, footerY + 31, { align: 'center' })
 
   // Bottom bar
   doc.setFillColor(...NAVY)
@@ -634,6 +685,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   doc.setTextColor(...WHITE)
   doc.text(`${org.companyName} · Loan Management System · Generated: ${fmtDateTime(now)}`, W / 2, H - 4, { align: 'center' })
 
+  await addDocumentWatermark(doc, logo)
   if (!save) return doc.output('blob') as Blob
   doc.save(outName)
 }
@@ -650,6 +702,8 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   const { default: autoTable } = await import('jspdf-autotable')
   const { disbursement, org, save = true, filename } = data
   const logo = await orgLogoPng(org)
+  const completed = ['completed', 'success', 'successful', 'disbursed'].includes(disbursement.status.toLowerCase())
+  const signature = completed ? await orgSignaturePng(org) : null
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -662,6 +716,8 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180,210,245)
   doc.text(`${org.tagline||'LOAN OPERATIONS'} · ${org.country}`,32,19)
   doc.setFillColor(...GOLD); doc.rect(0,32,W,1.2,'F')
+  doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...TEXT_MUTED)
+  doc.text(`Generated: ${fmtDateTime(now)}`,W-10,39,{align:'right'})
   let y=42
   doc.setFillColor(...NAVY); doc.roundedRect(10,y,W-20,16,3,3,'F')
   doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...WHITE)
@@ -674,7 +730,15 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   doc.setFillColor(240,247,255); doc.setDrawColor(...NAVY_LIGHT); doc.roundedRect(20,y,W-40,24,4,4,'FD')
   doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY_LIGHT); doc.text('AMOUNT RELEASED',W/2,y+8,{align:'center'})
   doc.setFontSize(20); doc.setTextColor(...NAVY); doc.text(fmtUGX(disbursement.amount||0),W/2,y+18,{align:'center'})
+  const signatureY = H - 42
+  doc.setDrawColor(...BORDER); doc.line(18,signatureY,W-18,signatureY)
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...TEXT_DARK)
+  doc.text('Authorised Signature',20,signatureY+17)
+  doc.line(57,signatureY+17,112,signatureY+17)
+  drawSignature(doc,signature,58,signatureY+3,52,12)
+  doc.text(`Generated: ${fmtDateTime(now)}`,W-20,signatureY+17,{align:'right'})
   doc.setFillColor(...NAVY); doc.rect(0,H-10,W,10,'F'); doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(...WHITE); doc.text(`${org.companyName} · Loan Management System · Generated: ${fmtDateTime(now)}`,W/2,H-4,{align:'center'})
+  await addDocumentWatermark(doc,logo)
   if (!save) return doc.output('blob') as Blob
   doc.save(outName)
 }
@@ -698,6 +762,7 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
 
   const { loan, repayments, schedule, disbursements, org, customerInfo, save = true, filename } = data
   const logo = await orgLogoPng(org)
+  const signature = await orgSignaturePng(org)
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
   const H = doc.internal.pageSize.getHeight()
@@ -737,7 +802,7 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(180, 210, 245)
-  doc.text(`Statement Date: ${fmtDate(now.toISOString())}`, W / 2 - 30, y + 14, { align: 'center' })
+  doc.text(`Generated: ${fmtDateTime(now)}`, W / 2 - 30, y + 14, { align: 'center' })
   doc.text(`Statement No: ${stmNo}`, W / 2 + 30, y + 14, { align: 'center' })
 
   y += 26
@@ -951,10 +1016,12 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
 
     doc.setFont('helvetica', 'normal')
     doc.text('Authorised By: ___________________', 20, H - 7)
+    if (pg === totalPages) drawSignature(doc, signature, 53, H - 19, 38, 9)
     doc.text(`Date: ${fmtDate(now.toISOString())}`, W / 2, H - 7, { align: 'center' })
     doc.text(`Page ${pg} of ${totalPages}`, W - 10, H - 7, { align: 'right' })
   }
 
+  await addDocumentWatermark(doc, logo)
   if (!save) return doc.output('blob') as Blob
   doc.save(outName)
 }

@@ -3,8 +3,10 @@ import { ArrowDownLeft, ArrowUpRight, Banknote, CalendarClock, ChevronRight, Cir
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useSelector } from 'react-redux'
+import { toast } from 'sonner'
 import { Card, Button, StatusBadge, Select } from '../../components/ui/primitives'
 import { formatDate, formatUGX } from '../../lib/format'
+import { exportReportPDF, type OrgInfo } from '../../lib/exportDocs'
 import { api } from '../../lib/services'
 import type { Application, Customer, LoanAccount, Repayment, ScheduleInstallment } from '../../lib/types'
 import type { RootState } from '../../store/store'
@@ -33,6 +35,7 @@ export function DashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const user = useSelector((state: RootState) => state.session.user)
+  const branding = useSelector((state: RootState) => state.branding)
   const userDisplayName = user?.name?.trim() || 'Team'
 
   useEffect(() => {
@@ -65,6 +68,33 @@ export function DashboardPage() {
   const overdueCount = useMemo(() => loans.filter((loan) => loan.status === 'Overdue').length, [loans])
   const activeCount = useMemo(() => loans.filter((loan) => loan.status === 'Active').length, [loans])
   const pendingApplicationCount = useMemo(() => applications.filter((item) => ['submitted', 'under review', 'assessment required', 'approval pending'].includes(String(item.status).toLowerCase())).length, [applications])
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null, signatureDataUrl: branding.signatureDataUrl || null }
+
+  async function exportOverviewPDF() {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      await exportReportPDF({
+        reportLabel: 'Portfolio overview',
+        rows: loans.map(({ ref, customer, product, principal, outstanding, status, maturity }) => ({
+          loan_reference: ref, customer, product, principal_ugx: principal, outstanding_ugx: outstanding, status, maturity_date: maturity,
+        })),
+        fromDate: today,
+        toDate: today,
+        org,
+        summary: {
+          totalDisbursed,
+          totalRepayments,
+          totalOutstanding,
+          parRate: totalOutstanding > 0
+            ? ((loans.filter((loan) => loan.status === 'Overdue').reduce((sum, loan) => sum + loan.outstanding, 0) / totalOutstanding) * 100).toFixed(1)
+            : '0.0',
+        },
+      })
+      toast.success('Print-ready portfolio PDF downloaded')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Portfolio PDF could not be generated.')
+    }
+  }
 
   const recentTransactions = repayments.slice(0, 4)
   const upcoming = schedules.filter((item) => item.status !== 'Paid').slice(0, 4)
@@ -102,7 +132,7 @@ export function DashboardPage() {
           <h1>Hello, {userDisplayName} <span className="wave">✳</span></h1>
         </div>
         <div className="heading-actions">
-          <Button variant="outline" icon={ListFilter} onClick={() => window.print()}>Export overview</Button>
+          <Button variant="outline" icon={ListFilter} onClick={() => void exportOverviewPDF()}>Export overview</Button>
         </div>
       </div>
 

@@ -14,7 +14,7 @@ const activityRecords: ActivityRecord[] = []
 
 export function OperationsCenterPage({ initialTab = 'documents' }: { initialTab?: 'documents' | 'imports' | 'activity' }) {
   const branding = useSelector((state: RootState) => state.branding)
-  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null, signatureDataUrl: branding.signatureDataUrl || null }
   const [tab, setTab] = useState(initialTab)
   const [files, setFiles] = useState<string[]>([])
   const [importType, setImportType] = useState('customers')

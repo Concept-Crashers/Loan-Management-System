@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
 import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
 import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, shareBlob, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
-import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, type OrgInfo } from '../lib/exportDocs'
+import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, exportReportPDF, type OrgInfo } from '../lib/exportDocs'
 import { api } from '../lib/services'
 import type { LoanAccount, PaymentMethod, Repayment, ScheduleInstallment } from '../lib/types'
 import type { RootState } from '../store/store'
@@ -65,7 +65,7 @@ export function RecordDetailPage() {
   const navigate = useNavigate()
   const role = useSelector((state: RootState) => state.session.role)
   const branding = useSelector((state: RootState) => state.branding)
-  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null }
+  const org: OrgInfo = { companyName: branding.companyName || 'Trust Loans', tagline: branding.tagline || 'Loan operations', country: branding.country || 'Uganda', currency: branding.currency || 'UGX', logoDataUrl: branding.logoDataUrl || null, signatureDataUrl: branding.signatureDataUrl || null }
   const segment = location.pathname.split('/')[1] ?? ''
   const config = labels[segment]
   const [record, setRecord] = useState<Record<string, unknown> | null>(null)
@@ -230,6 +230,24 @@ export function RecordDetailPage() {
     if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing')
   }
 
+  async function printRecordDocument() {
+    if (!record) throw new Error('The record is not loaded.')
+    if (segment === 'repayments') {
+      await downloadReceiptPDF(true)
+      return
+    }
+    if (segment === 'disbursements') {
+      await downloadDisbursementReceiptPDF(true)
+      return
+    }
+    if (segment === 'loans') {
+      await downloadStatementPDF(true)
+      return
+    }
+    const rows = [Object.fromEntries(Object.entries(record).filter(([, value]) => typeof value !== 'object' || value === null))]
+    await exportReportPDF({ reportLabel: `${config.title} record`, rows, fromDate: '', toDate: '', org })
+  }
+
   async function load() {
     if (!config) return
     setLoading(true)
@@ -320,7 +338,7 @@ export function RecordDetailPage() {
         {segment === 'loans' ? <Button variant="outline" onClick={async () => { try { await downloadStatementPDF(true); toast.success('Statement PDF downloaded') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement PDF could not be generated.') } }}>Statement PDF</Button> : null}
         {segment === 'loans' ? <Button variant="outline" icon={MessageCircle} onClick={async () => { try { const blob = await downloadStatementPDF(false); if (!(blob instanceof Blob)) throw new Error('Statement could not be prepared.'); const r = await shareBlob(blob, `loan-statement-${String(record?.reference ?? id)}.pdf`, 'Loan statement', `Loan statement ${String(record?.reference ?? id)} from ${org.companyName}.`); if (r !== 'cancelled') toast.success(r === 'shared' ? 'Statement shared' : 'Statement downloaded for WhatsApp sharing') } catch (e) { toast.error(e instanceof Error ? e.message : 'Statement could not be shared.') } }}>Share via WhatsApp</Button> : null}
         {segment !== 'loans' ? <Button variant="outline" icon={Download} onClick={() => void exportReportExcel({ reportLabel: `${config.title} record`, reportKey: `${segment}-${String(record?._id ?? id)}`, rows: [Object.fromEntries(Object.entries(record ?? {}).filter(([,v]) => typeof v !== 'object' || v === null))], fromDate: '', toDate: '', org }).then(() => toast.success('Export downloaded')).catch((e) => toast.error(e instanceof Error ? e.message : 'Export failed.'))}>Export</Button> : null}
-        <Button variant="outline" onClick={() => window.print()}>Print / receipt</Button>
+        <Button variant="outline" onClick={() => { void printRecordDocument().then(() => toast.success('Print-ready PDF downloaded')).catch((error) => toast.error(error instanceof Error ? error.message : 'PDF could not be generated.')) }}>Print / PDF</Button>
       </div>
     </div>
     <Card className="detail-info-card">
