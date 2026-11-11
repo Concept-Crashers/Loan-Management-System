@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Banknote, CalendarClock, ChevronRight, CircleAlert, TrendingUp, Users, Wallet, ArrowRight, FilePlus2, ContactRound, ReceiptText, ListFilter } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowDownLeft, ArrowUpRight, Banknote, CalendarClock, ChevronRight, CircleAlert, RefreshCw, TrendingUp, Users, Wallet, ArrowRight, FilePlus2, ContactRound, ReceiptText, ListFilter } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
-import { Card, Button, StatusBadge, Select } from '../../components/ui/primitives'
+import { Card, Button, Skeleton, StatusBadge, Select } from '../../components/ui/primitives'
 import { formatDate, formatUGX } from '../../lib/format'
 import { exportReportPDF, type OrgInfo } from '../../lib/exportDocs'
 import { api } from '../../lib/services'
@@ -32,6 +32,27 @@ function MetricCard({ label, value, change, icon: Icon, color, hint }: { label: 
   )
 }
 
+function DashboardSkeleton() {
+  return <>
+    <div className="metrics-grid" aria-label="Loading dashboard metrics" aria-busy="true">
+      {Array.from({ length: 4 }, (_, index) => <Card className="metric-card dashboard-skeleton-card" key={index}>
+        <div className="metric-top"><Skeleton className="skeleton-icon" /><Skeleton className="skeleton-short" /></div>
+        <Skeleton className="skeleton-line skeleton-label" /><Skeleton className="skeleton-line skeleton-metric" /><Skeleton className="skeleton-line skeleton-hint" />
+      </Card>)}
+    </div>
+    <div className="dashboard-secondary-stats" aria-hidden="true">
+      {Array.from({ length: 4 }, (_, index) => <Card className="secondary-stat-card" key={index}><Skeleton className="skeleton-icon" /><span className="dashboard-skeleton-stat"><Skeleton className="skeleton-line skeleton-label" /><Skeleton className="skeleton-line skeleton-short" /></span></Card>)}
+    </div>
+    <section className="dashboard-charts-grid" aria-hidden="true">
+      <Card className="chart-card trend-card dashboard-skeleton-chart"><Skeleton className="skeleton-line skeleton-section-title" /><Skeleton className="skeleton-block" /></Card>
+      <Card className="chart-card portfolio-card dashboard-skeleton-chart"><Skeleton className="skeleton-line skeleton-section-title" /><Skeleton className="skeleton-circle" /></Card>
+    </section>
+    <section className="dashboard-lower-grid" aria-hidden="true">
+      {Array.from({ length: 2 }, (_, index) => <Card className="table-card dashboard-skeleton-list" key={index}><Skeleton className="skeleton-line skeleton-section-title" />{Array.from({ length: 4 }, (_, row) => <Skeleton className="skeleton-line skeleton-list-row" key={row} />)}</Card>)}
+    </section>
+  </>
+}
+
 export function DashboardPage() {
   const [period, setPeriod] = useState('Last 7 months')
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -40,6 +61,7 @@ export function DashboardPage() {
   const [applications, setApplications] = useState<Application[]>([])
   const [schedules, setSchedules] = useState<ScheduleInstallment[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [dashboardLoading, setDashboardLoading] = useState(true)
   const [greeting, setGreeting] = useState(() => getDashboardGreeting())
 
   const user = useSelector((state: RootState) => state.session.user)
@@ -51,28 +73,26 @@ export function DashboardPage() {
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const [custRes, loanRes, repayRes, appRes, schedRes] = await Promise.all([
-          api.listCustomers().catch(() => []),
-          api.listLoans().catch(() => []),
-          api.listRepayments().catch(() => []),
-          api.listApplications().catch(() => []),
-          api.listSchedules().catch(() => []),
-        ])
-        setCustomers(custRes)
-        setLoans(loanRes)
-        setRepayments(repayRes)
-        setApplications(appRes)
-        setSchedules(schedRes)
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : 'Dashboard data could not be loaded.')
-      } finally {
-      }
+  const loadDashboard = useCallback(async () => {
+    setDashboardLoading(true)
+    setLoadError(null)
+    try {
+      const [custRes, loanRes, repayRes, appRes, schedRes] = await Promise.all([
+        api.listCustomers(), api.listLoans(), api.listRepayments(), api.listApplications(), api.listSchedules(),
+      ])
+      setCustomers(custRes)
+      setLoans(loanRes)
+      setRepayments(repayRes)
+      setApplications(appRes)
+      setSchedules(schedRes)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Dashboard data could not be loaded.')
+    } finally {
+      setDashboardLoading(false)
     }
-    void loadDashboard()
   }, [])
+
+  useEffect(() => { void loadDashboard() }, [loadDashboard])
 
   const totalOutstanding = useMemo(() => loans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0), [loans])
 
@@ -138,13 +158,13 @@ export function DashboardPage() {
 
   return (
     <div className="dashboard-page">
-      {loadError && <div className="form-error" role="alert">{loadError}</div>}
       <div className="page-heading dashboard-heading">
         <div>
           <div className="eyebrow"><span className="live-spark" /> {todayStr}</div>
           <h1>{greeting}, {userDisplayName} <span className="wave">✳</span></h1>
         </div>
         <div className="heading-actions">
+          <Button variant="outline" icon={RefreshCw} loading={dashboardLoading} onClick={() => void loadDashboard()}>Refresh</Button>
           <Button variant="outline" icon={ListFilter} onClick={() => void exportOverviewPDF()}>Export overview</Button>
         </div>
       </div>
@@ -160,6 +180,7 @@ export function DashboardPage() {
         </Link>
       </section>
 
+      {dashboardLoading ? <DashboardSkeleton /> : loadError ? <div className="dashboard-load-error" role="alert"><div><strong>Dashboard data could not be loaded</strong><p>{loadError}</p></div><Button icon={RefreshCw} onClick={() => void loadDashboard()}>Try again</Button></div> : <>
       <div className="metrics-grid">
         <MetricCard label="Total customers" value={String(customers.length)} change="Verified" icon={Users} color="blue" hint="Registered in database" />
         <MetricCard label="Total disbursed" value={formatUGX(totalDisbursed, true)} change="Active" icon={ArrowDownLeft} color="green" hint="Total loan releases" />
@@ -381,6 +402,7 @@ export function DashboardPage() {
           </Link>
         </div>
       </section>
+      </>}
     </div>
   )
 }

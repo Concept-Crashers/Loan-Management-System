@@ -7,7 +7,7 @@ import { useSelector } from 'react-redux'
 import { formatDate, formatUGX } from '../lib/format'
 import type { Repayment, TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
-import { Avatar, Button, Card, Field, Input, Select, StatusBadge, Textarea } from './ui/primitives'
+import { Avatar, Button, Card, Field, Input, Select, Skeleton, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
 import { shareBlob } from '../lib/api'
 import { exportReportExcel, type OrgInfo } from '../lib/exportDocs'
@@ -663,8 +663,13 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                     <th className="actions-header"> </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pageRows.map((row, index) => (
+                <tbody aria-busy={loading}>
+                  {loading && Array.from({ length: 7 }, (_, index) => <tr key={`loading-${index}`} className="skeleton-table-row">
+                    <td className="selection-column"><Skeleton className="skeleton-checkbox" /></td>
+                    {definition.columns.map((column, columnIndex) => <td key={column.key}><Skeleton className={`skeleton-line ${columnIndex === 0 ? 'skeleton-user' : columnIndex % 2 ? 'skeleton-detail' : 'skeleton-entity'}`} /></td>)}
+                    <td><Skeleton className="skeleton-icon" /></td>
+                  </tr>)}
+                  {!loading && pageRows.map((row, index) => (
                     <tr key={String(row.id ?? row.ref ?? index)} onClick={() => openRow(row)} className="data-row">
                       <td className="selection-column" onClick={(event) => event.stopPropagation()}><input type="checkbox" className="table-select-checkbox" checked={selectedRowIds.has(rowSelectionKey(row))} disabled={!rowSelectionKey(row)} onChange={(event) => toggleRowSelection(row, event.target.checked)} aria-label={`Select ${String(row.name ?? row.customer ?? row.ref ?? row.id ?? 'record')}`} /></td>
                       {definition.columns.map((column) => (
@@ -829,14 +834,14 @@ ${row.note}` : '') }), status: String(row.status ?? '').includes('Resolved') ? '
                       </td>
                     </tr>
                   ))}
-                  {pageRows.length === 0 && (
+                  {!loading && pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={definition.columns.length + 1}>
+                      <td colSpan={definition.columns.length + 2}>
                         <div className="table-empty">
                           <span><Search size={21} /></span>
-                          <strong>No records found</strong>
-                          <p>{search ? 'Try adjusting your search criteria.' : 'No data recorded in the database yet.'}</p>
-                          {search && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilter('All'); setBranchScope('all') }}>Clear search</Button>}
+                          <strong>{loadError ? 'Records could not be loaded' : 'No records found'}</strong>
+                          <p>{loadError ?? (search ? 'Try adjusting your search criteria.' : 'No data recorded in the database yet.')}</p>
+                          {loadError ? <Button variant="outline" size="sm" loading={loading} onClick={() => void loadData()}>Retry</Button> : search && <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilter('All'); setBranchScope('all') }}>Clear search</Button>}
                         </div>
                       </td>
                     </tr>

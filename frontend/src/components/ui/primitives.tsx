@@ -23,6 +23,10 @@ export function Card({ children, className = '', ...props }: { children: ReactNo
   return <div className={cn('lf-card', className)} {...props}>{children}</div>
 }
 
+export function Skeleton({ className = '', ...props }: { className?: string } & React.HTMLAttributes<HTMLSpanElement>) {
+  return <span aria-hidden="true" className={cn('lf-skeleton', className)} {...props} />
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className = '', ...props }, ref) {
   return <input ref={ref} className={cn('lf-input', className)} {...props} />
 })
