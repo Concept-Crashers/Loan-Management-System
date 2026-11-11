@@ -25,13 +25,22 @@ export function ProfileSecurityPage() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [reloadProfile, setReloadProfile] = useState(0)
   const [hideAmounts, setHideAmountsState] = useState(getHideAmounts())
 
   useEffect(() => {
     let alive = true
-    getMe().then((me) => { if (!alive) return; setName(me.name ?? ''); setEmail(me.email ?? ''); setPhone(me.phone ?? ''); setMfaEnabled(!!me.mfaEnabled); dispatch(setUser(me)) }).catch((e) => toast.error(e instanceof Error ? e.message : 'Profile could not be loaded.')).finally(() => alive && setLoading(false))
+    setLoading(true)
+    setProfileError(null)
+    getMe().then((me) => { if (!alive) return; setName(me.name ?? ''); setEmail(me.email ?? ''); setPhone(me.phone ?? ''); setMfaEnabled(!!me.mfaEnabled); dispatch(setUser(me)) }).catch((e) => {
+      if (!alive) return
+      const message = e instanceof Error ? e.message : 'Profile could not be loaded.'
+      setProfileError(message)
+      toast.error(message)
+    }).finally(() => alive && setLoading(false))
     return () => { alive = false }
-  }, [dispatch])
+  }, [dispatch, reloadProfile])
 
   async function saveProfile() {
     setSavingProfile(true)
@@ -89,12 +98,13 @@ export function ProfileSecurityPage() {
       </div>
       <span className="settings-save-note"><span className="online-dot" /> {loading ? 'Loading profile…' : 'Authenticated account'}</span>
     </div>
+    {profileError && <div className="audit-error" role="alert"><span>{profileError}</span><Button variant="outline" size="sm" loading={loading} onClick={() => setReloadProfile((value) => value + 1)}>Retry</Button></div>}
 
     <div className="settings-tab-content profile-security-grid">
       <Card className="settings-panel">
         <div className="settings-panel-header"><div className="settings-panel-icon"><ShieldCheck size={18} /></div><div><h2>Personal details</h2><p>Information shown to colleagues and on activity records.</p></div></div>
         <div className="settings-form-grid"><Field label="Full name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="Work email"><IconInput icon={ShieldCheck} type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></Field><Field label="Phone number" hint="Select a country calling code (default +256) and enter the local number."><PhoneNumberInput value={phone} onChange={setPhone} /></Field><Field label="Role"><Select value={user?.roles?.[0] ?? ''} disabled><option>{user?.roles?.join(', ') || '—'}</option></Select></Field></div>
-        <div className="settings-panel-footer"><span>Updates your account on the server.</span><Button icon={Save} loading={savingProfile} onClick={() => void saveProfile()}>Save changes</Button></div>
+        <div className="settings-panel-footer"><span>Updates your account on the server.</span><Button icon={Save} loading={savingProfile} disabled={loading || !!profileError} onClick={() => void saveProfile()}>Save changes</Button></div>
       </Card>
 
       <Card className="settings-panel">

@@ -871,3 +871,25 @@ label.lf-button input[type="file"][hidden] { margin-top: 0; }
 [data-theme='dark'] .quick-contact-balance { color:#cbd5e1; }
 [data-theme='dark'] .quick-contact-btn { background:#172554; border-color:#274690; color:#bfdbfe; }
 [data-theme='dark'] .quick-contact-btn.whatsapp { background:#052e16; border-color:#166534; color:#86efac; }
+.report-loading-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
+.report-loading-grid > .report-preview { grid-column:1/-1; margin-top:0; }
+.report-table-skeleton { min-width:620px; }
+.team-skeleton-copy { min-width:0; flex:1; display:flex; flex-direction:column; gap:7px; }
+.detail-page-loading { display:grid; gap:12px; }
+.detail-page-loading .detail-page-heading { display:flex; justify-content:space-between; gap:16px; }
+.detail-page-loading .detail-page-heading > div { display:grid; gap:8px; align-content:start; }
+.detail-page-loading .detail-info-card, .detail-page-loading .settings-panel { display:grid; gap:12px; }
+.detail-skeleton-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.detail-skeleton-grid > div { display:grid; gap:8px; }
+.skeleton-button { width:92px; height:34px; border-radius:6px; }
+[data-theme='dark'] .lf-skeleton { background:linear-gradient(90deg,#1d2b40 20%,#26364c 38%,#1d2b40 62%); background-size:400% 100%; }
+[data-theme='dark'] .audit-error { border-color:#57302f; color:#f0b1aa; background:#2b1d22; }
+@media (max-width:760px) {
+  .report-loading-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .detail-skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:480px) {
+  .report-loading-grid { grid-template-columns:1fr; }
+  .report-loading-grid > .report-preview { grid-column:auto; }
+  .detail-skeleton-grid { grid-template-columns:1fr; }
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import { Building2, Check, CreditCard, FileText, LockKeyhole, Mail, Save, ShieldCheck, Smartphone, SlidersHorizontal, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { Avatar, Button, Card, Field, Input, Select } from '../../components/ui/primitives'
+import { Avatar, Button, Card, Field, Input, Select, Skeleton } from '../../components/ui/primitives'
 import { useDispatch, useSelector } from 'react-redux'
 import { setBranding, type RootState } from '../../store/store'
 import { getOrganisationSettings, saveOrganisationSettings, type OrganisationSettings, getRoleCatalog, saveRolePermissions, type RoleCatalog, type RolePermissionEntry } from '../../lib/api'
@@ -20,6 +20,10 @@ export function SettingsPage() {
   const [teamMembers, setTeamMembers] = useState<StaffMember[]>([])
   const [branches, setBranches] = useState<BranchRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [teamError, setTeamError] = useState<string | null>(null)
+  const [branchError, setBranchError] = useState<string | null>(null)
+  const [settingsReload, setSettingsReload] = useState(0)
   const [saving, setSaving] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState(branding.companyName)
   const [tagline, setTagline] = useState(branding.tagline)
@@ -38,6 +42,7 @@ export function SettingsPage() {
   const [toggles, setToggles] = useState(defaultToggles)
   const [roleCatalog, setRoleCatalog] = useState<RoleCatalog | null>(null)
   const [roleLoading, setRoleLoading] = useState(false)
+  const [roleError, setRoleError] = useState<string | null>(null)
   const [roleSaving, setRoleSaving] = useState(false)
   const [selectedRole, setSelectedRole] = useState('')
   const [roleDraft, setRoleDraft] = useState<Record<string, string[]>>({})
@@ -51,12 +56,17 @@ export function SettingsPage() {
   async function loadRoles() {
     if (!canViewRoles) return
     setRoleLoading(true)
+    setRoleError(null)
     try {
       const catalog = await getRoleCatalog()
       setRoleCatalog(catalog)
       setRoleDraft(Object.fromEntries(catalog.roles.map((r) => [r.normalizedRole, [...new Set(r.permissions.filter((p) => p !== '*'))]])))
       setSelectedRole((current) => current && catalog.roles.some((r) => r.normalizedRole === current) ? current : (catalog.roles.find((r) => !r.locked)?.normalizedRole || catalog.roles[0]?.normalizedRole || ''))
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Role permissions could not be loaded.') }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Role permissions could not be loaded.'
+      setRoleError(message)
+      toast.error(message)
+    }
     finally { setRoleLoading(false) }
   }
 
@@ -64,10 +74,15 @@ export function SettingsPage() {
     let alive = true
     ;(async () => {
       setLoading(true)
+      setSettingsError(null)
+      setTeamError(null)
+      setBranchError(null)
       const [staffRes, branchRes, settingsRes] = await Promise.allSettled([api.listStaff(), api.listBranches(), getOrganisationSettings()])
       if (!alive) return
-      if (staffRes.status === 'fulfilled') setTeamMembers(staffRes.value); else setTeamMembers([])
+      if (staffRes.status === 'fulfilled') setTeamMembers(staffRes.value)
+      else { setTeamError(staffRes.reason instanceof Error ? staffRes.reason.message : 'Team members could not be loaded.') }
       if (branchRes.status === 'fulfilled') setBranches(branchRes.value)
+      else { setBranchError(branchRes.reason instanceof Error ? branchRes.reason.message : 'Branches could not be loaded.') }
       if (settingsRes.status === 'fulfilled') {
         const s = settingsRes.value
         setCompanyName(s.organisation.name || branding.companyName)
@@ -84,12 +99,14 @@ export function SettingsPage() {
         setReceiptFormat(s.preferences?.receiptReferenceFormat ?? 'RCT-{YYYY}-{SEQ}')
         if (s.preferences?.notifications) setToggles({ ...defaultToggles, ...s.preferences.notifications })
       } else {
-        toast.error(settingsRes.reason instanceof Error ? settingsRes.reason.message : 'Settings could not be loaded from server.')
+        const message = settingsRes.reason instanceof Error ? settingsRes.reason.message : 'Settings could not be loaded from server.'
+        setSettingsError(message)
+        toast.error(message)
       }
       setLoading(false)
     })()
     return () => { alive = false }
-  }, [])
+  }, [settingsReload])
 
   useEffect(() => { void loadRoles() }, [canViewRoles])
 
@@ -156,15 +173,17 @@ export function SettingsPage() {
   }
 
   return <div className="settings-page"><div className="page-heading"><div><div className="eyebrow">MANAGEMENT <span className="eyebrow-separator">/</span> CONFIGURATION</div><h1>Settings</h1><p>Configure workspace branding, notifications, role permissions, and loan defaults.</p></div><div className="heading-actions"><span className="settings-save-note"><span className="online-dot" /> {loading ? 'Loading server settings…' : 'Tenant settings synced from server'}</span></div></div>
+    {settingsError && <div className="audit-error" role="alert"><span>{settingsError}</span><Button variant="outline" size="sm" loading={loading} onClick={() => setSettingsReload((value) => value + 1)}>Retry settings</Button></div>}
     <Tabs.Root className="settings-tabs" defaultValue="company"><Tabs.List className="settings-tab-list"><Tabs.Trigger value="company"><Building2 size={15} /> Company</Tabs.Trigger>{canManageDocSignature && <Tabs.Trigger value="signature"><FileText size={15} /> Document signature</Tabs.Trigger>}<Tabs.Trigger value="notifications"><Mail size={15} /> Notifications</Tabs.Trigger><Tabs.Trigger value="roles"><Users size={15} /> Roles & permissions</Tabs.Trigger><Tabs.Trigger value="payments"><CreditCard size={15} /> Loan defaults</Tabs.Trigger></Tabs.List>
       <Tabs.Content value="company" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Company profile</h2><p>Business identity shown across customer records, authentication and receipts.</p></div></div><div className="company-logo-row"><div className="company-logo-mark">{logoDataUrl ? <img className="brand-logo-image" src={logoDataUrl} alt="Company logo preview" /> : <span className="brand-mark"><span /><span /><span /></span>}</div><div><strong>Logo and identity</strong><small>PNG, JPG or SVG · stored on the server (max 2 MB)</small></div><label className="lf-button lf-button-outline lf-button-sm">Change logo<input hidden type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { toast.error('Logo must be 2 MB or smaller.'); return }; const reader = new FileReader(); reader.onload = () => setLogoDataUrl(String(reader.result)); reader.readAsDataURL(file) }} /></label></div><div className="settings-form-grid"><Field label="Company name"><Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></Field><Field label="Brand tagline"><Input value={tagline} onChange={(event) => setTagline(event.target.value)} /></Field><Field label="Registration number"><Input value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="e.g. UMRA registration" /></Field><Field label="Primary contact" hint="Choose a calling code and enter the local number."><PhoneNumberInput value={primaryContact} onChange={setPrimaryContact} /></Field><Field label="Support email"><Input type="email" value={supportEmail} onChange={(event) => setSupportEmail(event.target.value)} placeholder="support@example.com" /></Field><Field label="Country"><Input value={country} onChange={(event) => setCountry(event.target.value)} /></Field><Field label="Legal name"><Input value={legalName} onChange={(event) => setLegalName(event.target.value)} /></Field><Field label="Default currency"><Input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} /></Field><Field label="Address" className="field-span-2"><Input value={address} onChange={(event) => setAddress(event.target.value)} /></Field></div><div className="settings-panel-footer"><span><ShieldCheck size={14} /> Branding updates apply system-wide after saving.</span><Button icon={Save} loading={saving === 'Company profile'} onClick={() => save('Company profile')}>Save changes</Button></div></Card>
-        <Card className="settings-panel settings-branch-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Branch defaults</h2><p>Select a default branch from branches configured in the system and save it to tenant preferences.</p></div></div><div className="settings-inline-row"><div><strong>Default operational branch</strong><small>Saved with tenant preferences. This sets the organisation default; staff must still be assigned to that branch in Staff & Users to see/register its customers.</small></div><Select value={defaultBranchId} onChange={(event) => setDefaultBranchId(event.target.value)}><option value="">No default branch</option>{branches.map((b) => <option key={String((b as any).branchId ?? b.id)} value={String((b as any).branchId ?? b.id)}>{b.name}{b.district ? ` · ${b.district}` : ''}</option>)}</Select></div>{!branches.length && !loading && <div className="notification-future-note"><Building2 size={15} /> No branches loaded. Create branches first, or ensure you have <code>branches.view</code> permission and refresh this page.</div>}<div className="settings-panel-footer"><span /> <Button icon={Save} loading={saving === 'Branch defaults'} onClick={() => save('Branch defaults')}>Save branch default</Button></div></Card></Tabs.Content>
+        <Card className="settings-panel settings-branch-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Building2 size={18} /></div><div><h2>Branch defaults</h2><p>Select a default branch from branches configured in the system and save it to tenant preferences.</p></div></div><div className="settings-inline-row"><div><strong>Default operational branch</strong><small>Saved with tenant preferences. This sets the organisation default; staff must still be assigned to that branch in Staff & Users to see/register its customers.</small></div><Select value={defaultBranchId} onChange={(event) => setDefaultBranchId(event.target.value)} disabled={loading || !!branchError}><option value="">No default branch</option>{branches.map((b) => <option key={String((b as any).branchId ?? b.id)} value={String((b as any).branchId ?? b.id)}>{b.name}{b.district ? ` · ${b.district}` : ''}</option>)}</Select></div>{branchError ? <div className="audit-error" role="alert"><span>{branchError}</span><Button variant="outline" size="sm" loading={loading} onClick={() => setSettingsReload((value) => value + 1)}>Retry</Button></div> : !branches.length && !loading && <div className="notification-future-note"><Building2 size={15} /> No branches configured yet. Create branches first, or confirm that your account has access.</div>}<div className="settings-panel-footer"><span /> <Button icon={Save} loading={saving === 'Branch defaults'} disabled={!!branchError || loading} onClick={() => save('Branch defaults')}>Save branch default</Button></div></Card></Tabs.Content>
       {canManageDocSignature && <Tabs.Content value="signature" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><FileText size={18} /></div><div><h2>Authorised document signature</h2><p>Upload an authorised signatory image for payment receipts, disbursement receipts, and loan statements.</p></div></div><div className="company-logo-row"><div className="company-logo-mark signature-preview">{signatureDataUrl ? <img className="brand-logo-image" src={signatureDataUrl} alt="Authorised signature preview" /> : <span className="signature-empty">No signature uploaded</span>}</div><div><strong>Signature image</strong><small>Transparent PNG recommended · PNG or JPG · max 600 KB</small></div><label className="lf-button lf-button-outline lf-button-sm">Upload signature<input hidden type="file" accept="image/png,image/jpeg" onChange={readSignatureFile} /></label>{signatureDataUrl && <Button variant="outline" onClick={() => setSignatureDataUrl(null)}>Remove</Button>}</div><div className="settings-panel-footer"><span><ShieldCheck size={14} /> The image is stored in this tenant’s organisation settings.</span><Button icon={Save} loading={saving === 'Document signature'} onClick={() => save('Document signature')}>Save signature</Button></div></Card></Tabs.Content>}
       <Tabs.Content value="notifications" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Mail size={18} /></div><div><h2>Notification preferences</h2><p>Choose which events staff see; preferences are saved to the server.</p></div></div><div className="notification-settings-list">{([{ key: 'appSubmitted', title: 'Application submitted', description: 'Alert the review team when a borrower request enters the queue.', icon: FileText }, { key: 'repaymentSoon', title: 'Upcoming repayment', description: 'Surface reminders ahead of a scheduled payment date.', icon: Smartphone }, { key: 'paymentReceived', title: 'Repayment received', description: 'Confirm recorded payment activity for the servicing team.', icon: Check }, { key: 'repaymentOverdue', title: 'Repayment overdue', description: 'Show a follow-up task when an installment becomes overdue.', icon: ShieldCheck }, { key: 'weeklySummary', title: 'Weekly portfolio summary', description: 'Prepare a weekly management digest for authorized staff.', icon: SlidersHorizontal }] as const).map(({ key, title, description, icon: Icon }) => <div className="notification-setting" key={key}><span className="notification-setting-icon"><Icon size={17} /></span><span className="notification-setting-copy"><strong>{title}</strong><small>{description}</small></span><button className={`toggle-switch ${toggles[key] ? 'toggle-on' : ''}`} role="switch" aria-checked={toggles[key]} onClick={() => toggle(key)} aria-label={`Toggle ${title}`}><span /></button></div>)}</div><div className="notification-future-note"><Mail size={15} /> SMS and email delivery requires provider configuration; preferences are stored now.</div><div className="settings-panel-footer"><span>Save to persist preferences for this tenant.</span><Button icon={Save} loading={saving === 'Notification preferences'} onClick={() => save('Notification preferences')}>Save preferences</Button></div></Card></Tabs.Content>
       <Tabs.Content value="roles" className="settings-tab-content">
         {!canViewRoles ? <Card className="settings-panel"><div className="access-warning"><LockKeyhole size={15} />You do not have permission to view role permissions (`identity.roles.view`). Ask a super admin.</div></Card> : <>
         <Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><LockKeyhole size={18} /></div><div><h2>Roles & permissions</h2><p>Super Admin is the overall system role and always has full access to everything all roles can do. Use this page to assign permissions per non-super-admin role. All system permissions are listed below; backend always enforces access.</p></div><div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{canManageRoles && selected && !selected.locked && <Button icon={Save} loading={roleSaving} onClick={() => void saveSelectedRole()}>Save {selected.role}</Button>}</div></div>
-          {roleLoading ? <div className="page-loading">Loading role permissions…</div> : <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,280px) 1fr', gap: 16, alignItems: 'start' }}>
+          {roleError && <div className="audit-error" role="alert"><span>{roleError}</span><Button variant="outline" size="sm" loading={roleLoading} onClick={() => void loadRoles()}>Retry</Button></div>}
+          {roleLoading ? <div className="page-loading">Loading role permissions…</div> : roleError ? null : <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,280px) 1fr', gap: 16, alignItems: 'start' }}>
             <div style={{ border: '1px solid #e8edf3', borderRadius: 12, overflow: 'hidden' }}>
               <div style={{ padding: 12, borderBottom: '1px solid #eef2f6' }}><Input placeholder="Search permissions…" value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} /></div>
               {(roleCatalog?.roles ?? []).map((role) => <button key={role.normalizedRole} type="button" onClick={() => setSelectedRole(role.normalizedRole)} style={{ width: '100%', textAlign: 'left', padding: '10px 12px', border: 0, borderBottom: '1px solid #f2f5f8', background: role.normalizedRole === selectedRole ? '#eef5ff' : '#fff', cursor: 'pointer' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className="role-chip-dot" /><strong style={{ fontSize: 13, color: '#17365d' }}>{role.role}</strong>{role.locked && <span style={{ fontSize: 10, color: '#8a5a00', background: '#fff6d8', padding: '1px 6px', borderRadius: 99 }}>locked</span>}</div><small style={{ color: '#6c8098' }}>{roleSummary(role)}</small></button>)}
@@ -190,7 +209,7 @@ export function SettingsPage() {
           </div>}
           <div className="access-warning" style={{ marginTop: 12 }}><LockKeyhole size={15} />Backend remains the authority (`requirePermission`). Super Admin is overall system access and is not restricted by role toggles. After saving other roles, affected users get updated permissions on next login or token refresh.</div>
         </Card>
-        <Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Users size={18} /></div><div><h2>Team members</h2><p>Staff assignment by branch and role (loaded from server). Assign roles in Staff & Users; configure each role's permissions here.</p></div></div><div className="staff-mini-list">{teamMembers.length ? teamMembers.slice(0, 8).map((person) => <div key={person.id}><Avatar name={person.name} size="sm" /><span><strong>{person.name}</strong><small>{person.role} · {person.branch}</small></span><span className="staff-mini-status">{person.status}</span></div>) : <div className="table-empty"><p>{loading ? 'Loading team members…' : 'No team members assigned yet.'}</p></div>}</div></Card>
+        <Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><Users size={18} /></div><div><h2>Team members</h2><p>Staff assignment by branch and role (loaded from server). Assign roles in Staff & Users; configure each role's permissions here.</p></div></div><div className="staff-mini-list">{loading && !teamMembers.length ? Array.from({ length: 4 }, (_, index) => <div key={index}><Skeleton className="skeleton-icon" /><span className="team-skeleton-copy"><Skeleton className="skeleton-line skeleton-user" /><Skeleton className="skeleton-line skeleton-short" /></span></div>) : teamError ? <div className="audit-error" role="alert"><span>{teamError}</span><Button variant="outline" size="sm" loading={loading} onClick={() => setSettingsReload((value) => value + 1)}>Retry</Button></div> : teamMembers.length ? teamMembers.slice(0, 8).map((person) => <div key={person.id}><Avatar name={person.name} size="sm" /><span><strong>{person.name}</strong><small>{person.role} · {person.branch}</small></span><span className="staff-mini-status">{person.status}</span></div>) : <div className="table-empty"><p>No team members assigned yet.</p></div>}</div></Card>
         </>}
       </Tabs.Content>
       <Tabs.Content value="payments" className="settings-tab-content"><Card className="settings-panel"><div className="settings-panel-header"><div className="settings-panel-icon"><CreditCard size={18} /></div><div><h2>Loan & payment defaults</h2><p>Tenant preferences saved to the server; product terms remain configured per loan product.</p></div></div><div className="settings-form-grid"><Field label="Default currency"><Input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} /></Field><Field label="Default repayment frequency"><Select value={defaultFrequency} onChange={(event) => setDefaultFrequency(event.target.value)}><option>Daily</option><option>Weekly</option><option>Bi-weekly</option><option>Monthly</option></Select></Field><Field label="Receipt reference format"><Input value={receiptFormat} onChange={(event) => setReceiptFormat(event.target.value)} /></Field></div><div className="payment-channel-list"><strong>Enabled channels (manual recording)</strong><div><span><Check size={14} />MTN Mobile Money</span><span><Check size={14} />Airtel Money</span><span><Check size={14} />Bank transfer</span><span><Check size={14} />Cash</span></div></div><div className="notification-future-note"><Smartphone size={15} />Live mobile-money/bank/SMS/email integrations require provider setup; preferences are stored.</div><div className="settings-panel-footer"><span>Saved to tenant settings.</span><Button icon={Save} loading={saving === 'Loan defaults'} onClick={() => save('Loan defaults')}>Save defaults</Button></div></Card></Tabs.Content>

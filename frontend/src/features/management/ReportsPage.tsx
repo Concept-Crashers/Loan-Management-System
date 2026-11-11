@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Activity, ArrowDownToLine, ArrowRight, Banknote, BriefcaseBusiness, CalendarDays, ChartNoAxesCombined, FileBarChart2, MessageCircle, Printer, Users, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button, Card, Input, Select } from '../../components/ui/primitives'
+import { Button, Card, Input, Select, Skeleton } from '../../components/ui/primitives'
 import { shareBlob } from '../../lib/api'
 import { api } from '../../lib/services'
 import { formatUGX } from '../../lib/format'
@@ -19,6 +19,9 @@ export function ReportsPage() {
   const [collections, setCollections] = useState<CollectionRecord[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [dataLoaded, setDataLoaded] = useState(false)
+  const loadRequest = useRef(0)
 
   const [selected, setSelected] = useState('portfolio')
   const [productFilter, setProductFilter] = useState('All products')
@@ -32,30 +35,43 @@ export function ReportsPage() {
   const [exporting, setExporting] = useState(false)
   const [sharing, setSharing] = useState(false)
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true)
-      try {
-        const [loanRes, repayRes, custRes, appRes, collRes, txnRes] = await Promise.all([
-          api.listLoans().catch(() => []),
-          api.listRepayments().catch(() => []),
-          api.listCustomers().catch(() => []),
-          api.listApplications().catch(() => []),
-          api.listCollections().catch(() => []),
-          api.listTransactions().catch(() => []),
-        ])
+  const loadData = useCallback(async () => {
+    const request = ++loadRequest.current
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const [loanRes, repayRes, custRes, appRes, collRes, txnRes] = await Promise.all([
+        api.listLoans(),
+        api.listRepayments(),
+        api.listCustomers(),
+        api.listApplications(),
+        api.listCollections(),
+        api.listTransactions(),
+      ])
+      if (request === loadRequest.current) {
         setLoans(loanRes)
         setRepayments(repayRes)
         setCustomers(custRes)
         setApplications(appRes)
         setCollections(collRes)
         setTransactions(txnRes)
-      } finally {
-        setLoading(false)
+        setDataLoaded(true)
       }
+    } catch (error) {
+      if (request === loadRequest.current) {
+        const message = error instanceof Error ? error.message : 'Report data could not be loaded.'
+        setLoadError(message)
+        toast.error(message)
+      }
+    } finally {
+      if (request === loadRequest.current) setLoading(false)
     }
-    void loadData()
   }, [])
+
+  useEffect(() => {
+    void loadData()
+    return () => { loadRequest.current += 1 }
+  }, [loadData])
 
   const options = useMemo(() => [
     {
@@ -236,9 +252,10 @@ export function ReportsPage() {
           <p>Portfolio data and financial exports from the live database.</p>
         </div>
         <div className="heading-actions">
-          <button className="button-print" disabled={exporting || sharing} onClick={() => void printPdfReport()}><Printer size={15} /> Print / PDF</button>
-          <Button loading={exporting} disabled={sharing} icon={ArrowDownToLine} onClick={() => void downloadExcel()}>Export Excel</Button>
-          <Button variant="outline" loading={sharing} disabled={exporting} icon={MessageCircle} onClick={() => void shareExcel()}>Share via WhatsApp</Button>
+          <Button variant="outline" icon={Activity} loading={loading} onClick={() => void loadData()}>Refresh</Button>
+          <button className="button-print" disabled={loading || !dataLoaded || exporting || sharing} onClick={() => void printPdfReport()}><Printer size={15} /> Print / PDF</button>
+          <Button loading={exporting} disabled={loading || !dataLoaded || sharing} icon={ArrowDownToLine} onClick={() => void downloadExcel()}>Export Excel</Button>
+          <Button variant="outline" loading={sharing} disabled={loading || !dataLoaded || exporting} icon={MessageCircle} onClick={() => void shareExcel()}>Share via WhatsApp</Button>
         </div>
       </div>
 
@@ -262,6 +279,11 @@ export function ReportsPage() {
         <span className="report-filter-note">{loading ? 'Loading…' : `${rows.length} rows`}</span>
       </div>
 
+      {loadError && <div className="audit-error" role="alert"><span>{dataLoaded ? `Refresh failed: ${loadError}` : loadError}</span><Button variant="outline" size="sm" loading={loading} onClick={() => void loadData()}>Retry</Button></div>}
+      {loading && !dataLoaded ? <div className="report-loading-grid" aria-label="Loading reports" aria-busy="true">
+        {Array.from({ length: 4 }, (_, index) => <Card className="report-kpi" key={index}><Skeleton className="skeleton-line skeleton-label" /><Skeleton className="skeleton-line skeleton-metric" /><Skeleton className="skeleton-line skeleton-hint" /></Card>)}
+        <Card className="report-preview"><Skeleton className="skeleton-line skeleton-section-title" />{Array.from({ length: 6 }, (_, index) => <Skeleton className="skeleton-line skeleton-list-row" key={index} />)}</Card>
+      </div> : !dataLoaded ? <div className="dashboard-load-error" role="alert"><div><strong>Reports are unavailable</strong><p>Retry loading the report sources to see current data.</p></div><Button icon={Activity} onClick={() => void loadData()}>Try again</Button></div> : <>
       <div className="report-overview-grid">
         <Card className="report-kpi">
           <span className="report-kpi-label">Total disbursed</span>
@@ -329,7 +351,7 @@ export function ReportsPage() {
           </button>
         </div>
         <div className="report-preview-table">
-          {rows.length ? (
+          {loading ? <div className="report-table-skeleton" aria-label="Refreshing report preview" aria-busy="true">{Array.from({ length: 5 }, (_, index) => <Skeleton className="skeleton-line skeleton-list-row" key={index} />)}</div> : rows.length ? (
             <table className="lf-table">
               <thead>
                 <tr>
@@ -357,6 +379,7 @@ export function ReportsPage() {
           )}
         </div>
       </Card>
+      </>}
     </div>
   )
 }

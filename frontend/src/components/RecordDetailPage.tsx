@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { toast } from 'sonner'
 import { formatDate, formatUGX } from '../lib/format'
-import { Button, Card, Field, Input, StatusBadge, Textarea } from './ui/primitives'
+import { Button, Card, Field, Input, Skeleton, StatusBadge, Textarea } from './ui/primitives'
 import { Dialog, DialogContent } from './ui/dialog'
 import { getRecordDetail, listEntityAudit, calculateCreditScore, getLatestCreditAssessment, shareBlob, uploadToCloudinary, type AuditEvent, type CreditAssessment } from '../lib/api'
 import { generateReceiptPDF, generateDisbursementReceiptPDF, generateLoanStatementPDF, exportReportExcel, exportReportPDF, type OrgInfo } from '../lib/exportDocs'
@@ -116,12 +116,14 @@ export function RecordDetailPage() {
   const config = labels[segment]
   const [record, setRecord] = useState<Record<string, unknown> | null>(null)
   const [audit, setAudit] = useState<AuditEvent[]>([])
+  const [auditError, setAuditError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [edit, setEdit] = useState({ amount: '', duration: '', purpose: '', income: '', obligations: '' })
   const [statement, setStatement] = useState<Record<string, any> | null>(null)
+  const [statementError, setStatementError] = useState<string | null>(null)
   const [credit, setCredit] = useState<CreditAssessment | null>(null)
   const [creditLoading, setCreditLoading] = useState(false)
   const [creditError, setCreditError] = useState<string | null>(null)
@@ -324,12 +326,27 @@ export function RecordDetailPage() {
     setError(null)
     try {
       const detail = await getRecordDetail(config.endpoint, decodeURIComponent(id))
-      const history = await listEntityAudit(config.entity, String(detail._id ?? id)).catch(() => ({ data: [] as AuditEvent[] }))
       setRecord(detail)
-      setAudit(history.data ?? [])
+      try {
+        const history = await listEntityAudit(config.entity, String(detail._id ?? id))
+        setAudit(history.data ?? [])
+        setAuditError(null)
+      } catch (reason) {
+        setAudit([])
+        setAuditError(reason instanceof Error ? reason.message : 'Audit history could not be loaded.')
+      }
       const minor = (k: string) => { const v = detail[k]; return typeof v === 'number' ? String(v / 100) : '' }
       setEdit({ amount: minor('amountMinor'), duration: String(detail.tenureMonths ?? ''), purpose: String(detail.purpose ?? ''), income: minor('incomeMinor'), obligations: minor('obligationsMinor') })
-      if (config.endpoint === 'loans') { try { const { getLoanStatement } = await import('../lib/api'); setStatement(await getLoanStatement(String(detail._id ?? id))) } catch { setStatement(null) } } else setStatement(null)
+      if (config.endpoint === 'loans') {
+        try {
+          const { getLoanStatement } = await import('../lib/api')
+          setStatement(await getLoanStatement(String(detail._id ?? id)))
+          setStatementError(null)
+        } catch (reason) {
+          setStatement(null)
+          setStatementError(reason instanceof Error ? reason.message : 'Loan statement could not be loaded.')
+        }
+      } else { setStatement(null); setStatementError(null) }
       try {
         if (segment === 'applications') setCredit(await getLatestCreditAssessment({ applicationId: String(detail._id ?? id) }))
         else if (segment === 'customers') setCredit(await getLatestCreditAssessment({ customerId: String(detail._id ?? id) }))
@@ -349,7 +366,11 @@ export function RecordDetailPage() {
   useEffect(() => { void load() }, [id, segment])
 
   if (!config) return <div className="not-found-card"><h1>Record type not found</h1><Button onClick={() => navigate(-1)}>Go back</Button></div>
-  if (loading) return <div className="page-loading">Loading {config.title.toLowerCase()}…</div>
+  if (loading) return <div className="detail-page detail-page-loading" aria-label={`Loading ${config.title.toLowerCase()}`} aria-busy="true">
+    <div className="detail-page-heading"><div><Skeleton className="skeleton-line skeleton-short" /><Skeleton className="skeleton-line skeleton-section-title" /><Skeleton className="skeleton-line skeleton-hint" /></div><Skeleton className="skeleton-button" /></div>
+    <Card className="settings-panel"><Skeleton className="skeleton-line skeleton-section-title" /><div className="detail-skeleton-grid">{Array.from({ length: 8 }, (_, index) => <div key={index}><Skeleton className="skeleton-line skeleton-label" /><Skeleton className="skeleton-line skeleton-detail" /></div>)}</div></Card>
+    <Card className="settings-panel"><Skeleton className="skeleton-line skeleton-section-title" />{Array.from({ length: 4 }, (_, index) => <Skeleton className="skeleton-line skeleton-list-row" key={index} />)}</Card>
+  </div>
   if (error || !record) return <div className="not-found-card"><span><FileText size={22} /></span><h1>Record unavailable</h1><p>{error ?? 'The record was not found or you do not have access.'}</p><div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}><Button variant="outline" onClick={() => void load()}>Retry</Button><Button variant="outline" onClick={() => navigate(config.back)}>Go back</Button></div></div>
 
   const entries = Object.entries(record).filter(([key]) => !['_id', '__v'].includes(key))
@@ -399,7 +420,7 @@ export function RecordDetailPage() {
         <p>Server-backed {config.title.toLowerCase()} record and audit history.</p>
       </div>
       <div className="heading-actions">
-        <Button variant="outline" icon={RefreshCw} onClick={() => void load()}>Refresh</Button>
+        <Button variant="outline" icon={RefreshCw} loading={loading} onClick={() => void load()}>Refresh</Button>
         {editTo ? <Button icon={Pencil} onClick={() => navigate(editTo)}>Edit</Button> : null}
         {canEditApplication ? <Button icon={Pencil} variant={editing ? 'outline' : 'primary'} onClick={() => setEditing((v) => !v)}>{editing ? 'Cancel edit' : 'Edit application'}</Button> : null}
         {segment === 'applications' && canAssessCredit ? <Button variant="outline" icon={TrendingUp} loading={creditLoading} onClick={() => void runCreditScore()}>Calculate credit score</Button> : null}
@@ -464,6 +485,7 @@ export function RecordDetailPage() {
     {editing && canEditApplication && <Card className="detail-info-card"><div className="detail-card-head"><h2><Pencil size={16} /> Edit application</h2></div><div className="form-grid"><Field label="Requested amount (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.amount} onChange={(e) => setEdit({ ...edit, amount: e.target.value })} /></Field><Field label="Duration (months)"><Input type="number" min="1" step="1" value={edit.duration} onChange={(e) => setEdit({ ...edit, duration: e.target.value })} /></Field><Field label="Monthly income (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.income} onChange={(e) => setEdit({ ...edit, income: e.target.value })} /></Field><Field label="Monthly obligations (UGX)"><Input type="number" min="0" step="1" inputMode="numeric" value={edit.obligations} onChange={(e) => setEdit({ ...edit, obligations: e.target.value })} /></Field><Field label="Purpose" className="field-span-2"><Textarea rows={3} value={edit.purpose} onChange={(e) => setEdit({ ...edit, purpose: e.target.value })} /></Field></div><div className="dialog-actions"><Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button loading={saving} onClick={() => void saveApplication()}>Save changes</Button></div></Card>}
 
     {segment === 'loans' && record && <Card className="detail-info-card"><div className="detail-card-head"><h2>Loan actions</h2></div><div className="dialog-actions" style={{justifyContent:'flex-start',flexWrap:'wrap'}}>{String(record.status ?? '') === 'pending_disbursement' && <Button onClick={() => navigate(`/disbursements/new?mode=authorize&loan=${encodeURIComponent(String(record._id ?? id))}`)}>Authorize disbursement</Button>}<Button variant="outline" onClick={() => setAction({ title: 'Apply reschedule', desc: 'Mutates pending schedule due dates and is audited. Include count and unit, e.g. "7 days" or "1 month".', label: 'Apply reschedule', danger: true, run: async (reason) => { const day = reason.match(/(\d+)\s*day/i); const month = reason.match(/(\d+)\s*month/i); const unit = day ? 'day' : 'month'; const count = Number((day||month||[])[1]||1); await api.applyLoanPlan(String(record._id ?? id), 'reschedule', reason, count, unit as any); toast.success(`Schedule rescheduled by ${count} ${unit}${count===1?'':'s'}`); await load() } })}>Apply reschedule</Button><Button variant="outline" onClick={() => setAction({ title: 'Apply payment plan', desc: 'Replaces pending installments with equal planned amounts and is audited. Include count/unit, e.g. "30 daily installments".', label: 'Apply payment plan', danger: true, run: async (reason) => { const day = reason.match(/(\d+)\s*daily|(\d+)\s*day/i); const month = reason.match(/(\d+)\s*month/i); const unit = month ? 'month' : 'day'; const count = Number((month||day||[]).slice(1).find(Boolean)||(month?3:30)); await api.applyLoanPlan(String(record._id ?? id), 'payment_plan', reason, count, unit as any); toast.success(`Payment plan applied: ${count} ${unit}${count===1?'':'s'}`); await load() } })}>Apply payment plan</Button><Button variant="outline" onClick={() => setAction({ title: 'Restructure loan', desc: 'Record a restructure lifecycle event with an audit reason.', label: 'Restructure', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'restructure', reason); toast.success('Loan restructured'); await load() } })}>Restructure</Button><Button variant="outline" onClick={() => setAction({ title: 'Refinance loan', desc: 'Record refinancing with an audit reason.', label: 'Refinance', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'refinance', reason); toast.success('Loan refinanced'); await load() } })}>Refinance</Button><Button variant="outline" onClick={() => setAction({ title: 'Apply penalty', desc: 'Apply a penalty/lifecycle event with an audit reason.', label: 'Apply penalty', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'penalty', reason); toast.success('Penalty applied'); await load() } })}>Apply penalty</Button><Button variant="outline" onClick={() => setAction({ title: 'Settle loan', desc: 'Mark this loan as settled with an audit reason.', label: 'Settle loan', run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'settle', reason); toast.success('Loan settled'); await load() } })}>Settle loan</Button><Button variant="danger" onClick={() => setAction({ title: 'Write off loan', desc: 'Write off this loan with an audit reason. This is a significant accounting action.', label: 'Write off loan', danger: true, run: async (reason) => { await api.loanLifecycle(String(record._id ?? id), 'write_off', reason); toast.success('Loan written off'); await load() } })}>Write off</Button></div></Card>}
+    {segment === 'loans' && statementError && <Card className="detail-info-card"><div className="credit-load-error" role="alert"><div><strong>Loan statement unavailable</strong><p>{statementError}</p></div><Button size="sm" variant="outline" loading={loading} onClick={() => void load()}>Retry</Button></div></Card>}
     {segment === 'loans' && statement && <Card className="detail-info-card"><div className="detail-card-head"><h2><FileText size={16} /> Loan statement</h2></div>
       <div className="info-grid">{(() => { const rows = ((statement.schedule as any[])||[]); const totalInterestMinor = Number((statement.summary as any)?.totalInterestMinor ?? rows.reduce((s,r)=>s+Number(r.interestMinor||0),0)); const totalFeesMinor = Number((statement.summary as any)?.totalFeesMinor ?? rows.reduce((s,r)=>s+Number(r.feesMinor||0),0)); const totalRepayableMinor = Number((statement.summary as any)?.totalRepayableMinor ?? rows.reduce((s,r)=>s+Number(r.totalMinor||0),0)); const paidMinor = Number((statement.summary as any)?.confirmedPaidMinor ?? 0); const paymentDueMinor = Number((statement.summary as any)?.paymentDueMinor ?? Math.max(0, totalRepayableMinor - paidMinor)); return [['Principal', ugx((statement.summary as any)?.principalMinor)], ['Total interest', ugx(totalInterestMinor)], ['Total fees', ugx(totalFeesMinor)], ['Total repayable', ugx(totalRepayableMinor)], ['Confirmed paid', ugx(paidMinor)], ['Payment due', ugx(paymentDueMinor)]] })().map(([k,v]) => <div key={String(k)}><span>{k}</span><strong>{v as string}</strong></div>)}</div>
       <div className="detail-card-head" style={{marginTop:12}}><h3>Repayment schedule</h3></div>
@@ -474,7 +496,7 @@ export function RecordDetailPage() {
     {segment === 'applications' && <Card className="detail-info-card"><div className="detail-card-head"><h2>Review comments & attachments</h2></div><div className="detail-card-head" style={{marginTop:0}}><h3>Comments</h3></div>{Array.isArray((record as any).reviewComments) && (record as any).reviewComments.length ? <div className="activity-list">{((record as any).reviewComments as any[]).slice().reverse().map((c,i)=><div className="activity-row" key={i}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{String(c.kind||'review')}</strong><small>{String(c.body||'')}</small></span><time>{c.at ? new Date(c.at).toLocaleString() : ''} · {String(c.actorName||c.actorId||'')}</time></div>)}</div> : <div className="table-empty"><strong>No review comments</strong></div>}<div className="detail-card-head" style={{marginTop:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><h3>Attachments</h3><label className="lf-button lf-button-outline" style={{cursor: uploadBusy?'wait':'pointer'}}><UploadCloud size={15} /> {uploadBusy ? 'Uploading…' : 'Upload attachment'}<input type="file" style={{display:'none'}} accept=".pdf,.jpg,.jpeg,.png" disabled={uploadBusy} onChange={async (e) => { const file = e.target.files?.[0]; e.target.value=''; if (!file) return; setUploadBusy(true); try { const sig = await api.getApplicationAttachmentSignature(String(record?._id ?? id), { mimeType: file.type || 'application/octet-stream', size: file.size }); const uploaded = await uploadToCloudinary(sig as any, file); await api.saveApplicationAttachment(String(record?._id ?? id), { name: file.name, kind: 'document', reference: (uploaded as any).secure_url || uploaded.public_id, storageKey: uploaded.public_id, mimeType: file.type, size: file.size }); toast.success('Attachment uploaded and recorded'); await load() } catch (err) { toast.error(err instanceof Error ? err.message : 'Attachment upload failed. If Cloudinary is not configured, use attachment metadata references.') } finally { setUploadBusy(false) } }} /></label></div>{Array.isArray((record as any).attachments) && (record as any).attachments.length ? <div className="table-scroll"><table className="lf-table"><thead><tr><th>Name</th><th>Kind</th><th>Reference</th><th>Added</th></tr></thead><tbody>{((record as any).attachments as any[]).map((a,i)=><tr key={i}><td>{String(a.name||'')}</td><td>{String(a.kind||'document')}</td><td className="mono-text" title={String(a.reference||'')}>{String(a.reference||'').slice(0,48)}{String(a.reference||'').length>48?'…':''}</td><td>{a.addedAt ? new Date(a.addedAt).toLocaleString() : '—'}</td></tr>)}</tbody></table></div> : <div className="table-empty"><strong>No attachments yet</strong><p>Upload a file (Cloudinary configured) or record attachment metadata. Files are stored securely and references are audited.</p></div>}</Card>}
     <Card className="detail-info-card">
       <div className="detail-card-head"><h2><ShieldCheck size={16} /> Audit history</h2></div>
-      {audit.length ? <div className="activity-list">{audit.map((event) => <div className="activity-row" key={event._id}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{event.action}</strong><small>{event.entityType} · {event.entityId} · by {event.actorId}</small></span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</div> : <div className="table-empty"><strong>No audit events recorded</strong><p>History will appear after a server-side action.</p></div>}
+      {auditError ? <div className="credit-load-error" role="alert"><div><strong>Audit history unavailable</strong><p>{auditError}</p></div><Button size="sm" variant="outline" loading={loading} onClick={() => void load()}>Retry</Button></div> : audit.length ? <div className="activity-list">{audit.map((event) => <div className="activity-row" key={event._id}><span className="activity-icon activity-info"><ShieldCheck size={15} /></span><span><strong>{event.action}</strong><small>{event.entityType} · {event.entityId} · by {event.actorId}</small></span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</div> : <div className="table-empty"><strong>No audit events recorded</strong><p>History will appear after a server-side action.</p></div>}
     </Card>
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !actionBusy) { setAction(null); setActionReason('') } }}>
       <DialogContent title={action?.title ?? 'Confirm action'} description={action?.desc} className="record-dialog action-confirm-dialog">
