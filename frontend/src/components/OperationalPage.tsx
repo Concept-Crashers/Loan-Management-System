@@ -5,7 +5,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { toast } from 'sonner'
 import { useSelector } from 'react-redux'
 import { formatDate, formatUGX } from '../lib/format'
-import type { TableRow } from '../lib/types'
+import type { Repayment, TableRow } from '../lib/types'
 import type { PageColumn, PageDefinition } from '../app/page-registry'
 import { Avatar, Button, Card, Field, Input, Select, StatusBadge, Textarea } from './ui/primitives'
 import type { RootState } from '../store/store'
@@ -519,7 +519,7 @@ export function OperationalPage({ definition, path }: { definition: PageDefiniti
                                       const { getRecordDetail } = await import('../lib/api')
                                       const { generateReceiptPDF } = await import('../lib/exportDocs')
                                       const rec = await getRecordDetail('payments', String(row.recordId ?? row.id))
-                                      const repayment = {
+                                      const repayment: Repayment = {
                                         id: String(rec._id ?? row.id),
                                         customer: String((rec as any).customerName ?? (rec as any).customer ?? rec.customerId ?? '—'),
                                         customerId: String((rec as any).customerNumber ?? rec.customerId ?? ''),

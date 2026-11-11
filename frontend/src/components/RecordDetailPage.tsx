@@ -189,6 +189,7 @@ export function RecordDetailPage() {
         fees: Number(entry.feesMinor ?? 0) / 100,
         paid: Number(entry.paidMinor ?? 0) / 100,
         status: String(entry.status ?? 'Upcoming') as ScheduleInstallment['status'],
+        officer: String(entry.officer ?? 'Loan Officer'),
       })),
       disbursements: disbursements.map((entry) => ({
         date: String(entry.completedAt ?? entry.authorizedAt ?? entry.createdAt ?? ''),
