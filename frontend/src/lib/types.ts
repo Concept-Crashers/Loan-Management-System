@@ -110,7 +110,7 @@ export interface ScheduleInstallment {
   interest?: number
   fees?: number
   paid: number
-  status: 'Paid' | 'Due soon' | 'Due today' | 'Overdue' | 'Upcoming'
+  status: 'Paid' | 'Partially paid' | 'Due soon' | 'Due today' | 'Overdue' | 'Upcoming'
   officer: string
 }
 

@@ -175,22 +175,45 @@ export function RecordDetailPage() {
       status: p.status === 'confirmed' ? 'Successful' : p.status === 'reversed' ? 'Reversed' : 'Pending review',
     })))
     const filename = `loan-statement-${loan.ref}.pdf`
+    let remainingPaidMinor = repayments
+      .filter((repayment) => repayment.status === 'Successful')
+      .reduce((total, repayment) => total + Math.round(repayment.amount * 100), 0)
     const blob = await generateLoanStatementPDF({
       loan,
       repayments,
-      schedule: schedule.map((entry) => ({
-        id: String(entry._id ?? entry.installmentNumber),
-        customer: loan.customer,
-        loan: loan.ref,
-        due: String(entry.dueDate ?? ''),
-        expected: Number(entry.totalMinor ?? 0) / 100,
-        principal: Number(entry.principalMinor ?? 0) / 100,
-        interest: Number(entry.interestMinor ?? 0) / 100,
-        fees: Number(entry.feesMinor ?? 0) / 100,
-        paid: Number(entry.paidMinor ?? 0) / 100,
-        status: String(entry.status ?? 'Upcoming') as ScheduleInstallment['status'],
-        officer: String(entry.officer ?? 'Loan Officer'),
-      })),
+      schedule: schedule.map((entry) => {
+        const totalMinor = Math.max(0, Number(entry.totalMinor ?? 0))
+        const paidMinor = Math.min(totalMinor, remainingPaidMinor)
+        remainingPaidMinor = Math.max(0, remainingPaidMinor - paidMinor)
+        const dueDate = String(entry.dueDate ?? '').slice(0, 10)
+        const today = new Date().toISOString().slice(0, 10)
+        const dueDateValue = dueDate ? new Date(`${dueDate}T00:00:00Z`).getTime() : Number.NaN
+        const daysUntilDue = Math.ceil((dueDateValue - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)
+        const status: ScheduleInstallment['status'] = totalMinor === 0 || paidMinor >= totalMinor
+          ? 'Paid'
+          : paidMinor > 0
+            ? 'Partially paid'
+            : daysUntilDue < 0
+              ? 'Overdue'
+              : daysUntilDue === 0
+                ? 'Due today'
+                : daysUntilDue <= 7
+                  ? 'Due soon'
+                  : 'Upcoming'
+        return {
+          id: String(entry._id ?? entry.installmentNumber),
+          customer: loan.customer,
+          loan: loan.ref,
+          due: String(entry.dueDate ?? ''),
+          expected: totalMinor / 100,
+          principal: Number(entry.principalMinor ?? 0) / 100,
+          interest: Number(entry.interestMinor ?? 0) / 100,
+          fees: Number(entry.feesMinor ?? 0) / 100,
+          paid: paidMinor / 100,
+          status,
+          officer: String(entry.officer ?? 'Loan Officer'),
+        }
+      }),
       disbursements: disbursements.map((entry) => ({
         date: String(entry.completedAt ?? entry.authorizedAt ?? entry.createdAt ?? ''),
         reference: String(entry.reference ?? entry.idempotencyKey ?? entry._id ?? ''),

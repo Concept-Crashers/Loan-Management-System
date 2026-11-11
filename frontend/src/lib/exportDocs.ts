@@ -92,6 +92,15 @@ function humanLabel(key: string): string {
     .replace(/\bRef\b/g, 'Ref')
 }
 
+function isDocumentNameField(key: string): boolean {
+  return /name|customer|borrower|officer|receivedby|authorizedby|completedby/i.test(key)
+}
+
+function formatDocumentCell(key: string, value: unknown): string {
+  const text = value === null || value === undefined ? '—' : String(value)
+  return isDocumentNameField(key) ? text.toLocaleUpperCase() : text
+}
+
 // ─── Colour palette (navy corporate) ─────────────────────────────────────────
 const NAVY: [number, number, number] = [23, 54, 93]
 const NAVY_LIGHT: [number, number, number] = [52, 91, 134]
@@ -315,7 +324,7 @@ export async function exportReportPDF(options: ReportPDFOptions): Promise<Blob |
         const v = row[k]
         if (typeof v === 'number' && k.toLowerCase().includes('ugx')) return fmtUGX(v)
         if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDate(v)
-        return v === null || v === undefined ? '—' : String(v)
+        return formatDocumentCell(k, v)
       })
     )
 
@@ -435,7 +444,8 @@ export async function exportReportExcel(options: ReportExcelOptions): Promise<Bl
         const v = row[k]
         if (typeof v === 'number' && k.toLowerCase().includes('ugx')) return fmtUGX(v)
         if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDate(v)
-        return v === null || v === undefined ? '—' : v
+        if (v === null || v === undefined) return '—'
+        return typeof v === 'string' && isDocumentNameField(k) ? v.toLocaleUpperCase() : v
       }))
     })
     // END OF REPORT row
@@ -569,9 +579,9 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<Blob | void
   infoRow('Loan Reference', repayment.loanReference || repayment.loan || '—', colRight, y)
   y += rowH
   infoRow('Payment Method', repayment.method || '—', colLeft, y)
-  infoRow('Customer Name', repayment.customer || '—', colRight, y)
+  infoRow('Customer Name', repayment.customer.toLocaleUpperCase() || '—', colRight, y)
   y += rowH
-  infoRow('Received By', repayment.receivedByName || repayment.receivedBy || '—', colLeft, y)
+  infoRow('Received By', (repayment.receivedByName || repayment.receivedBy || '—').toLocaleUpperCase(), colLeft, y)
   infoRow('Customer ID', repayment.customerId || '—', colRight, y)
   y += rowH
   infoRow('Customer Phone', repayment.customerPhone || '—', colLeft, y)
@@ -725,7 +735,7 @@ export async function generateDisbursementReceiptPDF(data: DisbursementReceiptDa
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180,210,245)
   doc.text(`Receipt No: ${receiptNo}`,W/2,y+13,{align:'center'})
   y+=24
-  autoTable(doc, { head: [['Field','Value']], body: [['Customer',disbursement.customer],['Customer ID',disbursement.customerNumber||'—'],['Loan Account',disbursement.loanRef],['Reference',disbursement.reference||disbursement.id],['Method',disbursement.method],['Status',disbursement.status],['Authorized By',disbursement.authorizedByName||'—'],['Authorized',disbursement.authorizedAt?fmtDate(disbursement.authorizedAt):'—'],['Completed By',disbursement.completedByName||'—'],['Completed',disbursement.completedAt?fmtDate(disbursement.completedAt):'—']], startY:y, theme:'grid', headStyles:{fillColor:NAVY,textColor:WHITE}, margin:{left:20,right:20}, tableLineColor:BORDER })
+  autoTable(doc, { head: [['Field','Value']], body: [['Customer',disbursement.customer.toLocaleUpperCase()],['Customer ID',disbursement.customerNumber||'—'],['Loan Account',disbursement.loanRef],['Reference',disbursement.reference||disbursement.id],['Method',disbursement.method],['Status',disbursement.status],['Authorized By',(disbursement.authorizedByName||'—').toLocaleUpperCase()],['Authorized',disbursement.authorizedAt?fmtDate(disbursement.authorizedAt):'—'],['Completed By',(disbursement.completedByName||'—').toLocaleUpperCase()],['Completed',disbursement.completedAt?fmtDate(disbursement.completedAt):'—']], startY:y, theme:'grid', headStyles:{fillColor:NAVY,textColor:WHITE}, margin:{left:20,right:20}, tableLineColor:BORDER })
   y=((doc as any).lastAutoTable?.finalY??y+30)+8
   doc.setFillColor(240,247,255); doc.setDrawColor(...NAVY_LIGHT); doc.roundedRect(20,y,W-40,24,4,4,'FD')
   doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...NAVY_LIGHT); doc.text('AMOUNT RELEASED',W/2,y+8,{align:'center'})
@@ -815,43 +825,48 @@ export async function generateLoanStatementPDF(data: LoanStatementData): Promise
 
   const detailLeft = 14
   const detailRight = W / 2 + 5
-  const detailRowH = 7.5
+  const detailRowH = 9
 
   function detailRow(label: string, value: string, cx: number, cy: number) {
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7)
+    doc.setFontSize(7.5)
     doc.setTextColor(...TEXT_MUTED)
-    doc.text(label, cx, cy)
+    const labelText = `${label.toLocaleUpperCase()}:`
+    doc.text(labelText, cx, cy)
+    const valueX = cx + doc.getTextWidth(labelText) + 2
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(7.5)
     doc.setTextColor(...TEXT_DARK)
-    doc.text(value || '—', cx, cy + 4)
+    const maxWidth = W / 2 - 20 - (valueX - cx)
+    let display = value || '—'
+    while (display.length > 4 && doc.getTextWidth(display) > maxWidth) display = `${display.slice(0, -4)}...`
+    doc.text(display, valueX, cy)
   }
 
-  const r1y = y + 7
-  detailRow('Borrower Name', loan.customer || '—', detailLeft, r1y)
+  const r1y = y + 9
+  detailRow('Borrower Name', loan.customer.toLocaleUpperCase() || '—', detailLeft, r1y)
   detailRow('Loan Reference', loan.ref || '—', detailRight, r1y)
 
-  const r2y = r1y + detailRowH + 2
+  const r2y = r1y + detailRowH
   detailRow('Customer ID', loan.customerId || '—', detailLeft, r2y)
-  detailRow('Loan Product', loan.product || '—', detailRight, r2y)
+  detailRow('Loan Product', loan.product.toLocaleUpperCase() || '—', detailRight, r2y)
 
-  const r3y = r2y + detailRowH + 2
+  const r3y = r2y + detailRowH
   detailRow('Address', customerInfo?.address || '—', detailLeft, r3y)
   detailRow('Principal Amount', fmtUGX(loan.principal || 0), detailRight, r3y)
 
-  const r4y = r3y + detailRowH + 2
+  const r4y = r3y + detailRowH
   detailRow('Phone', customerInfo?.phone || '—', detailLeft, r4y)
   detailRow('Disbursement Date', fmtDate(loan.start), detailRight, r4y)
 
-  const r5y = r4y + detailRowH + 2
+  const r5y = r4y + detailRowH
   detailRow('Loan Status', loan.status || '—', detailLeft, r5y)
   detailRow('Maturity Date', fmtDate(loan.maturity), detailRight, r5y)
 
-  const r6y = r5y + detailRowH + 2
+  const r6y = r5y + detailRowH
   detailRow('Total Interest', fmtUGX(loan.interest || 0), detailLeft, r6y)
   detailRow('Total Fees', fmtUGX(loan.fees || 0), detailRight, r6y)
-  const r7y = r6y + detailRowH + 2
+  const r7y = r6y + detailRowH
   detailRow('Total Repayable', fmtUGX((loan.principal || 0) + (loan.interest || 0) + (loan.fees || 0)), detailLeft, r7y)
   detailRow('Email', customerInfo?.email || '—', detailRight, r7y)
 
